@@ -4,11 +4,15 @@
     "remoteUser": "ubuntu",
     "remoteEnv": {
         "COMPOSE_BAKE": "true",
-        "DISPLAY": "${localEnv:DISPLAY}"
+        "DISPLAY": "${localEnv:DISPLAY}",
+        "XAUTHORITY": "${localEnv:XAUTHORITY}",
+        "XDG_RUNTIME_DIR": "${localEnv:XDG_RUNTIME_DIR}"
     },
     "containerEnv": {
         "COMPOSE_BAKE": "true",
-        "DISPLAY": "${localEnv:DISPLAY}"
+        "DISPLAY": "${localEnv:DISPLAY}",
+        "XAUTHORITY": "${localEnv:XAUTHORITY}",
+        "XDG_RUNTIME_DIR": "${localEnv:XDG_RUNTIME_DIR}"
     },
     "mounts": [
         {
@@ -32,8 +36,8 @@
             "type": "bind"
         },
         {
-            "source": "${localEnv:XAUTHORITY}",
-            "target": "/home/ubuntu/.Xauthority",
+            "source": "${localEnv:XDG_RUNTIME_DIR}",
+            "target": "${localEnv:XDG_RUNTIME_DIR}",
             "type": "bind"
         }
     ],
@@ -41,7 +45,8 @@
         "--gpus=all",
         "--device=/dev/video0",
         "--device=/dev/bus/usb",
-        "--device=/dev/snd"
+        "--device=/dev/snd",
+        "--device=/dev/dri:/dev/dri"
     ],
     "features": {
         "ghcr.io/devcontainers/features/common-utils": {},

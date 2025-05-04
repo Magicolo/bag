@@ -10,6 +10,7 @@ use mediapipe_rs::tasks::vision::FaceLandmarkerBuilder;
 use model::Build;
 use opencv::{
     core::{Mat, MatTraitConst},
+    highgui,
     videoio::{
         CAP_ANY, CAP_PROP_FPS, CAP_PROP_FRAME_HEIGHT, CAP_PROP_FRAME_WIDTH, VideoCapture,
         VideoCaptureTrait, VideoCaptureTraitConst,
@@ -33,7 +34,7 @@ async fn video() -> anyhow::Result<()> {
     camera.set(CAP_PROP_FRAME_WIDTH, 640.0)?;
     camera.set(CAP_PROP_FRAME_HEIGHT, 480.0)?;
     camera.set(CAP_PROP_FPS, 30.0)?;
-    // highgui::named_window(WINDOW, highgui::WINDOW_AUTOSIZE)?;
+    highgui::named_window(WINDOW, highgui::WINDOW_AUTOSIZE)?;
 
     // let face = FaceLandmarkerBuilder::new()
     //     .num_faces(1)
@@ -56,7 +57,7 @@ async fn video() -> anyhow::Result<()> {
         }
 
         // if detector.process(&frame, &mut mesh) {
-        // highgui::imshow(WINDOW, &frame)?;
+        highgui::imshow(WINDOW, &frame)?;
         // }
     }
     Ok(())
