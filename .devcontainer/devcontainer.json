@@ -3,16 +3,12 @@
     "containerUser": "ubuntu",
     "remoteUser": "ubuntu",
     "remoteEnv": {
-        // General
         "COMPOSE_BAKE": "true",
-        "PULSE_SERVER": "${env:PULSE_SERVER}",
-        "DISPLAY": "${env:DISPLAY}",
-        "WAYLAND_DISPLAY": "${env:WAYLAND_DISPLAY}"
+        "DISPLAY": "${localEnv:DISPLAY}"
     },
     "containerEnv": {
-        // General
         "COMPOSE_BAKE": "true",
-        "PULSE_SERVER": "unix:/mnt/wslg/PulseServer"
+        "DISPLAY": "${localEnv:DISPLAY}"
     },
     "mounts": [
         {
@@ -31,14 +27,21 @@
             "type": "bind"
         },
         {
-            "source": "/mnt/wslg",
-            "target": "/mnt/wslg",
+            "source": "/tmp/.X11-unix",
+            "target": "/tmp/.X11-unix",
+            "type": "bind"
+        },
+        {
+            "source": "${localEnv:XAUTHORITY}",
+            "target": "/home/ubuntu/.Xauthority",
             "type": "bind"
         }
     ],
     "runArgs": [
         "--gpus=all",
-        "--device=/dev/video0"
+        "--device=/dev/video0",
+        "--device=/dev/bus/usb",
+        "--device=/dev/snd"
     ],
     "features": {
         "ghcr.io/devcontainers/features/common-utils": {},

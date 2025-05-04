@@ -3,7 +3,7 @@ FROM ubuntu
 # Setup general.
 RUN apt update && \
     apt upgrade --yes && \
-    apt install --no-install-recommends --yes ca-certificates git git-lfs curl jq gawk findutils grep nano screen rsync apt-utils dpkg gettext procps build-essential pkg-config make cmake libssl-dev lldb htop valgrind google-perftools llvm 7zip poppler-utils fd-find ripgrep fzf zoxide parallel software-properties-common pulseaudio alsa-utils libasound2-dev llvm-dev libclang-dev clang libopencv-dev && \
+    apt install --no-install-recommends --yes ca-certificates git git-lfs curl jq gawk findutils grep nano screen rsync apt-utils dpkg gettext procps build-essential pkg-config make cmake libssl-dev lldb htop valgrind google-perftools llvm 7zip poppler-utils fd-find ripgrep fzf zoxide parallel software-properties-common pulseaudio alsa-utils libasound2-dev llvm-dev libclang-dev clang libopencv-dev ffmpeg libgtk-3-dev libgl1-mesa-dev libxrender1 libxext6 && \
     update-ca-certificates && \
     apt autoremove --yes && \
     apt clean --yes && \
