@@ -4,11 +4,11 @@ FROM ubuntu
 RUN apt update && \
     apt upgrade --yes && \
     apt install --no-install-recommends --yes \
-        ca-certificates git git-lfs curl jq gawk findutils grep nano screen rsync apt-utils dpkg gettext procps \
-        build-essential pkg-config make cmake libssl-dev lldb htop valgrind google-perftools llvm 7zip poppler-utils \
-        fd-find ripgrep fzf zoxide parallel software-properties-common pulseaudio alsa-utils libasound2-dev llvm-dev \
-        libclang-dev clang libopencv-dev ffmpeg libgtk-3-dev libgl1-mesa-dev libxrender1 libxext6 libgl1-mesa-dri \
-        gstreamer1.0-tools gstreamer1.0-libav libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev && \
+    ca-certificates git git-lfs curl jq gawk findutils grep nano screen rsync apt-utils dpkg gettext procps gcc \
+    build-essential pkg-config make cmake libssl-dev lldb htop valgrind google-perftools llvm 7zip poppler-utils \
+    fd-find ripgrep fzf zoxide parallel software-properties-common pulseaudio alsa-utils libasound2-dev llvm-dev \
+    libclang-dev clang libopencv-dev ffmpeg libgtk-3-dev libgl1-mesa-dev libxrender1 libxext6 libgl1-mesa-dri \
+    gstreamer1.0-tools gstreamer1.0-libav libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev protobuf-compiler zlib1g && \
     update-ca-certificates && \
     apt autoremove --yes && \
     apt clean --yes && \
@@ -59,3 +59,11 @@ RUN REPOSITORY="cargo-bins/cargo-binstall" && \
     tar --extract --gzip --mode=0755 --directory="/usr/local/bin" && \
     cargo binstall cargo-watch cargo-update cargo-expand cargo-audit cargo-msrv cargo-hack cargo-semver-checks cargo-release cargo-nextest cargo-bloat cargo-llvm-cov && \
     chmod --recursive 0777 "$CARGO_HOME"
+
+# Setup cuda.
+ENV PATH=/usr/local/cuda/bin:$PATH
+ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
+RUN curl --location --silent --show-error --fail --output "/tmp/cuda-keyring.deb" "https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb" && \
+    dpkg --install "/tmp/cuda-keyring.deb" && \
+    apt update && \
+    apt install --yes cuda-toolkit-12-9 nvidia-gds nvidia-open cudnn9-cuda-12

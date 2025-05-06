@@ -7,11 +7,14 @@ edition = "2024"
 fundsp = "0.20.0"
 cpal = "0.15.3"
 anyhow = "1.0.98"
-mediapipe-rs = { git = "https://github.com/WasmEdge/mediapipe-rs.git" }
+# mediapipe-rs = { git = "https://github.com/WasmEdge/mediapipe-rs.git" }
 reqwest = "0.12.15"
-tokio = { version = "1.44.2", features = ["fs", "rt-multi-thread", "macros"] }
-onnxruntime = "0.0.14"
+tokio = { version = "1.45.0", features = ["fs", "rt-multi-thread", "macros"] }
 opencv = { version = "0.94.4", default-features = false, features = [
     "videoio",
     "highgui",
+    "imgproc",
 ] }
+candle-core = "0.9.1"
+candle-onnx = "0.9.1"
+hf-hub = "0.4.2"

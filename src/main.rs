@@ -1,16 +1,16 @@
 mod model;
 
 use anyhow::{anyhow, bail};
+use candle_core::{CudaDevice, Device, Tensor, backend::BackendDevice, pickle};
 use cpal::{
     FromSample, SampleFormat, SizedSample,
     traits::{DeviceTrait, HostTrait, StreamTrait},
 };
 use fundsp::hacker::*;
-use mediapipe_rs::tasks::vision::FaceLandmarkerBuilder;
-use model::Build;
+use hf_hub::{Cache, api::tokio::Api};
 use opencv::{
     core::{Mat, MatTraitConst},
-    highgui,
+    highgui::{self, WND_PROP_VISIBLE},
     videoio::{
         CAP_ANY, CAP_PROP_FPS, CAP_PROP_FRAME_HEIGHT, CAP_PROP_FRAME_WIDTH, VideoCapture,
         VideoCaptureTrait, VideoCaptureTraitConst,
@@ -20,50 +20,65 @@ use std::io::stdin;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // audio().await?;
     video().await?;
     Ok(())
 }
 
 async fn video() -> anyhow::Result<()> {
-    const WINDOW: &str = "La Brousse À Gigante";
+    fn next(camera: &mut VideoCapture, frame: &mut Mat) -> anyhow::Result<bool> {
+        if camera.read(frame)? {
+            if frame.size()?.empty()
+                || highgui::poll_key()? == 24
+                || highgui::get_window_property(WINDOW, WND_PROP_VISIBLE)? < 1.0
+            {
+                Ok(false)
+            } else {
+                Ok(true)
+            }
+        } else {
+            Ok(false)
+        }
+    }
 
+    const WINDOW: &str = "La Brousse À Gigante";
+    const WIDTH: usize = 640;
+    const HEIGHT: usize = 480;
+    const FPS: usize = 30;
+
+    let model = yolo11().await?;
+    let device = Device::Cuda(CudaDevice::new(0)?);
     let mut camera = VideoCapture::new(0, CAP_ANY)?;
     if !camera.is_opened()? {
         bail!("failed to open camera");
     }
-    camera.set(CAP_PROP_FRAME_WIDTH, 640.0)?;
-    camera.set(CAP_PROP_FRAME_HEIGHT, 480.0)?;
-    camera.set(CAP_PROP_FPS, 30.0)?;
-    highgui::named_window(WINDOW, highgui::WINDOW_AUTOSIZE)?;
+    camera.set(CAP_PROP_FRAME_WIDTH, WIDTH as _)?;
+    camera.set(CAP_PROP_FRAME_HEIGHT, HEIGHT as _)?;
+    camera.set(CAP_PROP_FPS, FPS as _)?;
+    highgui::named_window(WINDOW, highgui::WINDOW_NORMAL)?;
+    highgui::resize_window(WINDOW, WIDTH as _, HEIGHT as _)?;
 
-    // let face = FaceLandmarkerBuilder::new()
-    //     .num_faces(1)
-    //     .min_face_detection_confidence(0.5)
-    //     .min_face_presence_confidence(0.5)
-    //     .min_tracking_confidence(0.5)
-    //     .output_face_blendshapes(true)
-    //     .build()
-    //     .await?;
-    // face.detect(input);
-    // let mut mesh = FaceMesh::default();
-    // let mut detector = FaceMeshDetector::default();
-    let mut frame = Mat::default();
-    while camera.read(&mut frame)? {
-        if frame.size()?.empty() {
-            println!("skip empty frame");
-            continue;
-        } else {
-            println!("got frame {:?}!", frame.size())
-        }
-
+    let mut raw = Mat::default();
+    // let mut rgb = Mat::default();
+    while next(&mut camera, &mut raw)? {
+        // imgproc::cvt_color(src, dst, code, dst_cn)
+        // let results = face.detect(&raw)?;
         // if detector.process(&frame, &mut mesh) {
-        highgui::imshow(WINDOW, &frame)?;
+        highgui::imshow(WINDOW, &raw)?;
         // }
     }
+
+    highgui::destroy_window(WINDOW)?;
     Ok(())
 }
 
-fn audio() -> anyhow::Result<()> {
+async fn yolo11() -> anyhow::Result<Tensor> {
+    let path = model::load("Ultralytics/YOLO11", "yolo11x-pose.pt").await?;
+    let mut pairs = dbg!(pickle::read_all(path)?);
+    Ok(pairs.pop().ok_or(anyhow!("no model found"))?.1)
+}
+
+async fn audio() -> anyhow::Result<()> {
     let device = cpal::default_host()
         .default_output_device()
         .ok_or(anyhow!("no output device available"))?;
