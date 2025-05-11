@@ -73,7 +73,13 @@
                 "vadimcn.vscode-lldb",
                 "rust-lang.rust-analyzer",
                 "Swellaby.vscode-rust-test-adapter",
-                "fill-labs.dependi"
+                "fill-labs.dependi",
+                // Python
+                "ms-python.python",
+                "ms-python.isort",
+                "ms-python.flake8",
+                "ms-python.black-formatter",
+                "ms-toolsai.jupyter"
             ],
             "settings": {
                 // General
