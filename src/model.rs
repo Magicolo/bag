@@ -28,21 +28,12 @@
 //     }
 // }
 
-use hf_hub::{
-    Cache,
-    api::tokio::{Api, ApiBuilder},
-};
+use hf_hub::{Cache, api::tokio::Api};
 use std::path::PathBuf;
 
 pub async fn load(repository: &str, name: &str) -> anyhow::Result<PathBuf> {
     Ok(match Cache::from_env().model(repository.into()).get(name) {
         Some(path) => path,
-        None => {
-            ApiBuilder::from_env()
-                .build()?
-                .model(repository.into())
-                .download(name)
-                .await?
-        }
+        None => Api::new()?.model(repository.into()).download(name).await?,
     })
 }

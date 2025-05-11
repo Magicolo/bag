@@ -1,15 +1,13 @@
 mod model;
 
 use anyhow::{anyhow, bail};
-use candle_core::{CudaDevice, Device, Tensor, backend::BackendDevice, pickle};
 use cpal::{
     FromSample, SampleFormat, SizedSample,
     traits::{DeviceTrait, HostTrait, StreamTrait},
 };
 use fundsp::hacker::*;
-use hf_hub::{Cache, api::tokio::Api};
 use opencv::{
-    core::{Mat, MatTraitConst},
+    core::{Mat, MatTraitConst, MatTraitConstManual},
     highgui::{self, WND_PROP_VISIBLE},
     videoio::{
         CAP_ANY, CAP_PROP_FPS, CAP_PROP_FRAME_HEIGHT, CAP_PROP_FRAME_WIDTH, VideoCapture,
@@ -17,6 +15,7 @@ use opencv::{
     },
 };
 use std::io::stdin;
+use tch::{CModule, Device, Kind, Tensor};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -46,8 +45,10 @@ async fn video() -> anyhow::Result<()> {
     const HEIGHT: usize = 480;
     const FPS: usize = 30;
 
-    let model = yolo11().await?;
-    let device = Device::Cuda(CudaDevice::new(0)?);
+    // let (input, model) = yolo11().await?;
+    // let mut inputs = HashMap::new();
+    let device = Device::Cuda(0);
+    let model = yolo11(device).await?;
     let mut camera = VideoCapture::new(0, CAP_ANY)?;
     if !camera.is_opened()? {
         bail!("failed to open camera");
@@ -58,24 +59,41 @@ async fn video() -> anyhow::Result<()> {
     highgui::named_window(WINDOW, highgui::WINDOW_NORMAL)?;
     highgui::resize_window(WINDOW, WIDTH as _, HEIGHT as _)?;
 
-    let mut raw = Mat::default();
-    // let mut rgb = Mat::default();
-    while next(&mut camera, &mut raw)? {
-        // imgproc::cvt_color(src, dst, code, dst_cn)
-        // let results = face.detect(&raw)?;
-        // if detector.process(&frame, &mut mesh) {
-        highgui::imshow(WINDOW, &raw)?;
-        // }
+    let mut frame = Mat::default();
+    while next(&mut camera, &mut frame)? {
+        let input = to_tensor(&frame, device)?;
+        println!("INPUT: {input:?}");
+        let output = model.forward_ts(&[input])?.squeeze();
+        println!("OUTPUT: {output:?}");
+        highgui::imshow(WINDOW, &frame)?;
     }
 
     highgui::destroy_window(WINDOW)?;
     Ok(())
 }
 
-async fn yolo11() -> anyhow::Result<Tensor> {
+pub fn to_tensor(frame: &Mat, device: Device) -> anyhow::Result<Tensor> {
+    let (height, width) = (frame.rows() as i64, frame.cols() as i64);
+    let data = frame.data_bytes()?; // &[u8] in B, G, R, B, G, R, …
+    Ok(
+        Tensor::from_data_size(data, &[height, width, 3], Kind::Uint8)
+            .to_device(device)
+            .permute([2, 0, 1])
+            .index_select(0, &Tensor::from_slice(&[2i64, 1, 0]).to_device(device))
+            .to_kind(Kind::Float)
+            .divide_scalar(255.0)
+            .unsqueeze(0),
+    )
+}
+
+async fn yolo11(device: Device) -> anyhow::Result<CModule> {
     let path = model::load("Ultralytics/YOLO11", "yolo11x-pose.pt").await?;
-    let mut pairs = dbg!(pickle::read_all(path)?);
-    Ok(pairs.pop().ok_or(anyhow!("no model found"))?.1)
+    let model = CModule::load_on_device(&path, device)?;
+    println!("Model loaded at path '{path:?}' on {device:?}.");
+    for (key, value) in model.named_parameters()? {
+        println!("=> {key}: {value:?}");
+    }
+    Ok(model)
 }
 
 async fn audio() -> anyhow::Result<()> {

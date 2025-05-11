@@ -15,6 +15,6 @@ opencv = { version = "0.94.4", default-features = false, features = [
     "highgui",
     "imgproc",
 ] }
-candle-core = "0.9.1"
-candle-onnx = "0.9.1"
 hf-hub = "0.4.2"
+# tch = "0.20.0"
+burn-tch = "0.17.0"
