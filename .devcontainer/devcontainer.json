@@ -107,7 +107,10 @@
                     "-c",
                     "$(rustup which --toolchain nightly rustfmt) --edition 2024 --style-edition 2024 --unstable-features --config wrap_comments=true --config imports_granularity='Crate' --config format_code_in_doc_comments=true --config reorder_impl_items=true --config group_imports='One' ${file}"
                 ],
-                "rust-analyzer.rustfmt.rangeFormatting.enable": true
+                "rust-analyzer.rustfmt.rangeFormatting.enable": true,
+                // Python
+                "python.analysis.autoImportCompletions": true,
+                "python.analysis.typeCheckingMode": "standard"
             }
         }
     }
