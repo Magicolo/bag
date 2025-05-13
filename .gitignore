@@ -1,4 +1,9 @@
 Cargo.lock
 target
 venv
-models
+**/*.task
+**/*.tflite
+**/*.pt
+**/*.onnx
+**/*.safetensors
+**/*.ckpt
