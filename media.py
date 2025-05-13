@@ -1,22 +1,29 @@
 from dataclasses import dataclass
 import threading
 from typing import Callable, Generic, Iterable, List, TypeVar
-
+from pyo import Server, Sine, pa_list_devices
 from mediapipe import Image, ImageFormat
 from mediapipe.tasks.python import BaseOptions
-from mediapipe.tasks.python.vision import (
-    RunningMode,
+from mediapipe.tasks.python.vision.hand_landmarker import (
+    HandLandmark,
     HandLandmarker,
     HandLandmarkerOptions,
     HandLandmarksConnections,
+)
+from mediapipe.tasks.python.vision.pose_landmarker import (
     PoseLandmarker,
     PoseLandmarkerOptions,
     PoseLandmarksConnections,
+)
+from mediapipe.tasks.python.vision.gesture_recognizer import (
     GestureRecognizer,
     GestureRecognizerOptions,
+)
+from mediapipe.tasks.python.vision.image_segmenter import (
     ImageSegmenter,
     ImageSegmenterOptions,
 )
+from mediapipe.tasks.python.vision import RunningMode
 from cv2.typing import MatLike, Scalar
 from cv2 import (
     CAP_PROP_FPS,
@@ -31,13 +38,13 @@ from cv2 import (
     destroyWindow,
     line,
     pollKey,
-    WND_PROP_VISIBLE,
     namedWindow,
     resize,
     resizeWindow,
     WINDOW_NORMAL,
     CAP_PROP_POS_MSEC,
 )
+from torch import device
 
 
 T = TypeVar("T")
@@ -77,9 +84,9 @@ class State:
 
 
 WINDOW = "MEDIA PIPE"
-WIDTH = 160
-HEIGHT = 120
-SCALE = 4
+WIDTH = 80
+HEIGHT = 60
+SCALE = 8
 MODE = RunningMode.LIVE_STREAM
 DEVICE = BaseOptions.Delegate.GPU
 STATE = Lock(State(Hand([]), Pose([])))
@@ -92,7 +99,7 @@ namedWindow(WINDOW, WINDOW_NORMAL)
 resizeWindow(WINDOW, WIDTH * SCALE, HEIGHT * SCALE)
 
 
-def hand():
+def hand() -> HandLandmarker:
     return HandLandmarker.create_from_options(
         HandLandmarkerOptions(
             base_options=BaseOptions(
@@ -108,7 +115,7 @@ def hand():
     )
 
 
-def pose():
+def pose() -> PoseLandmarker:
     return PoseLandmarker.create_from_options(
         PoseLandmarkerOptions(
             base_options=BaseOptions(
@@ -123,7 +130,7 @@ def pose():
     )
 
 
-def gesture():
+def gesture() -> GestureRecognizer:
     return GestureRecognizer.create_from_options(
         GestureRecognizerOptions(
             base_options=BaseOptions(
@@ -175,6 +182,11 @@ def draw(
 
 
 try:
+    print(pa_list_devices())
+    server = Server(duplex=0, nchnls=2)
+    server.setInOutDevice(4)
+    server.boot().start()
+    carrier = Sine(freq=[400, 500, 600, 700, 800]).out()
     with hand() as hand_detector, pose() as pose_detector:
         success = True
         small = None
@@ -203,6 +215,25 @@ try:
                 PoseLandmarksConnections.POSE_LANDMARKS,
             )
             imshow(WINDOW, large)
+            for landmarks in hand_landmarks:
+                carrier.freq = [
+                    frequency
+                    for (index, landmark) in enumerate(
+                        (
+                            landmarks[HandLandmark.THUMB_TIP],
+                            landmarks[HandLandmark.INDEX_FINGER_TIP],
+                            landmarks[HandLandmark.MIDDLE_FINGER_TIP],
+                            landmarks[HandLandmark.RING_FINGER_TIP],
+                            landmarks[HandLandmark.PINKY_TIP],
+                        ),
+                        1,
+                    )
+                    for frequency in (
+                        landmark.x * 440 * index,
+                        landmark.y * 440 * index,
+                    )
+                ]
+                print(carrier.freq)
             if pollKey() == 27:
                 break
 finally:
