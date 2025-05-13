@@ -1,9 +1,10 @@
-from dataclasses import dataclass
-import threading
-from typing import Callable, Generic, Iterable, List, TypeVar
+from typing import Iterable, List
 from pyo import Server, Sine, pa_list_devices
 from mediapipe import Image, ImageFormat
-from mediapipe.tasks.python import BaseOptions
+from mediapipe.tasks.python.core.base_options import BaseOptions
+from mediapipe.tasks.python.vision.core.vision_task_running_mode import (
+    VisionTaskRunningMode,
+)
 from mediapipe.tasks.python.vision.hand_landmarker import (
     HandLandmark,
     HandLandmarker,
@@ -23,7 +24,6 @@ from mediapipe.tasks.python.vision.image_segmenter import (
     ImageSegmenter,
     ImageSegmenterOptions,
 )
-from mediapipe.tasks.python.vision import RunningMode
 from cv2.typing import MatLike, Scalar
 from cv2 import (
     CAP_PROP_FPS,
@@ -44,52 +44,14 @@ from cv2 import (
     WINDOW_NORMAL,
     CAP_PROP_POS_MSEC,
 )
-from torch import device
-
-
-T = TypeVar("T")
-U = TypeVar("U")
-
-
-class Lock(Generic[T]):
-    def __init__(self, value: T) -> None:
-        self._value = value
-        self._lock = threading.Lock()
-
-    def lock(self, lock: Callable[[T], U]) -> U:
-        with self._lock:
-            return lock(self._value)
-
-
-@dataclass
-class Hand:
-    landmarks: List
-
-    def set(self, landmarks: List):
-        self.landmarks = landmarks
-
-
-@dataclass
-class Pose:
-    landmarks: List
-
-    def set(self, landmarks: List):
-        self.landmarks = landmarks
-
-
-@dataclass
-class State:
-    hand: Hand
-    pose: Pose
 
 
 WINDOW = "MEDIA PIPE"
 WIDTH = 80
 HEIGHT = 60
 SCALE = 8
-MODE = RunningMode.LIVE_STREAM
+MODE = VisionTaskRunningMode.VIDEO
 DEVICE = BaseOptions.Delegate.GPU
-STATE = Lock(State(Hand([]), Pose([])))
 
 camera = VideoCapture(0)
 camera.set(CAP_PROP_FRAME_WIDTH, WIDTH)
@@ -108,9 +70,6 @@ def hand() -> HandLandmarker:
             ),
             running_mode=MODE,
             num_hands=4,
-            result_callback=lambda result, _, __: STATE.lock(
-                lambda state: state.hand.set(result.hand_landmarks)
-            ),
         )
     )
 
@@ -123,9 +82,6 @@ def pose() -> PoseLandmarker:
                 delegate=DEVICE,
             ),
             running_mode=MODE,
-            result_callback=lambda result, _, __: STATE.lock(
-                lambda state: state.pose.set(result.pose_landmarks)
-            ),
         )
     )
 
@@ -182,11 +138,10 @@ def draw(
 
 
 try:
-    print(pa_list_devices())
     server = Server(duplex=0, nchnls=2)
     server.setInOutDevice(4)
     server.boot().start()
-    carrier = Sine(freq=[400, 500, 600, 700, 800]).out()
+    carrier = Sine(freq=[444, 555, 666, 777, 888]).out()
     with hand() as hand_detector, pose() as pose_detector:
         success = True
         small = None
@@ -196,26 +151,22 @@ try:
             time = int(camera.get(CAP_PROP_POS_MSEC))
             small = flip(small, 1, small)
             image = Image(ImageFormat.SRGB, cvtColor(small, COLOR_BGR2RGB))
-            hand_detector.detect_async(image, time)
-            pose_detector.detect_async(image, time)
-            (hand_landmarks, pose_landmarks) = STATE.lock(
-                lambda state: (state.hand.landmarks, state.pose.landmarks)
-            )
+            hand_result = hand_detector.detect_for_video(image, time)
+            pose_result = pose_detector.detect_for_video(image, time)
             large = resize(small, (WIDTH * SCALE, HEIGHT * SCALE), large)
             large = draw(
                 large,
                 (0, 0, 255),
-                hand_landmarks,
+                hand_result.hand_landmarks,
                 HandLandmarksConnections.HAND_CONNECTIONS,
             )
             large = draw(
                 large,
                 (0, 255, 0),
-                pose_landmarks,
+                pose_result.pose_landmarks,
                 PoseLandmarksConnections.POSE_LANDMARKS,
             )
-            imshow(WINDOW, large)
-            for landmarks in hand_landmarks:
+            for landmarks in hand_result.hand_landmarks:
                 carrier.freq = [
                     frequency
                     for (index, landmark) in enumerate(
@@ -229,11 +180,11 @@ try:
                         1,
                     )
                     for frequency in (
-                        landmark.x * 440 * index,
-                        landmark.y * 440 * index,
+                        landmark.x * 333 * index,
+                        landmark.y * 555 * index,
                     )
                 ]
-                print(carrier.freq)
+            imshow(WINDOW, large)
             if pollKey() == 27:
                 break
 finally:
