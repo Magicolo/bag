@@ -6,13 +6,23 @@
         "COMPOSE_BAKE": "true",
         "DISPLAY": "${localEnv:DISPLAY}",
         "XAUTHORITY": "${localEnv:XAUTHORITY}",
-        "XDG_RUNTIME_DIR": "${localEnv:XDG_RUNTIME_DIR}"
+        "XDG_RUNTIME_DIR": "${localEnv:XDG_RUNTIME_DIR}",
+        "NVIDIA_DRIVER_CAPABILITIES": "compute,graphics,video,utility",
+        "NVIDIA_VISIBLE_DEVICES": "all",
+        "__NV_PRIME_RENDER_OFFLOAD": "1",
+        "__GLX_VENDOR_LIBRARY_NAME": "nvidia",
+        "__VK_LAYER_NV_optimus": "NVIDIA_only"
     },
     "containerEnv": {
         "COMPOSE_BAKE": "true",
         "DISPLAY": "${localEnv:DISPLAY}",
         "XAUTHORITY": "${localEnv:XAUTHORITY}",
-        "XDG_RUNTIME_DIR": "${localEnv:XDG_RUNTIME_DIR}"
+        "XDG_RUNTIME_DIR": "${localEnv:XDG_RUNTIME_DIR}",
+        "NVIDIA_DRIVER_CAPABILITIES": "compute,graphics,video,utility",
+        "NVIDIA_VISIBLE_DEVICES": "all",
+        "__NV_PRIME_RENDER_OFFLOAD": "1",
+        "__GLX_VENDOR_LIBRARY_NAME": "nvidia",
+        "__VK_LAYER_NV_optimus": "NVIDIA_only"
     },
     "mounts": [
         {
