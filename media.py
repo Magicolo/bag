@@ -1,5 +1,5 @@
-from typing import Iterable, List
-from pyo import Server, Sine, pa_list_devices
+from typing import Iterable, List, Optional
+from pyo import Server, Sine, pa_list_devices, pa_get_output_devices
 from mediapipe import Image, ImageFormat
 from mediapipe.tasks.python.core.base_options import BaseOptions
 from mediapipe.tasks.python.vision.core.vision_task_running_mode import (
@@ -137,9 +137,16 @@ def draw(
     return frame
 
 
+def audio_device() -> Optional[int]:
+    for name, index in zip(*pa_get_output_devices()):
+        if "analog" in name.lower():
+            return index
+
+
 try:
+
     server = Server(duplex=0, nchnls=2)
-    server.setInOutDevice(4)
+    server.setInOutDevice(audio_device())
     server.boot().start()
     carrier = Sine(freq=[444, 555, 666, 777, 888]).out()
     with hand() as hand_detector, pose() as pose_detector:
