@@ -7,3 +7,4 @@ venv
 **/*.onnx
 **/*.safetensors
 **/*.ckpt
+__pycache__

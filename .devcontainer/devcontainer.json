@@ -11,7 +11,9 @@
         "NVIDIA_VISIBLE_DEVICES": "all",
         "__NV_PRIME_RENDER_OFFLOAD": "1",
         "__GLX_VENDOR_LIBRARY_NAME": "nvidia",
-        "__VK_LAYER_NV_optimus": "NVIDIA_only"
+        "__VK_LAYER_NV_optimus": "NVIDIA_only",
+        // Python
+        "FLAKE8_IGNORE": "E501"
     },
     "containerEnv": {
         "COMPOSE_BAKE": "true",
@@ -22,7 +24,9 @@
         "NVIDIA_VISIBLE_DEVICES": "all",
         "__NV_PRIME_RENDER_OFFLOAD": "1",
         "__GLX_VENDOR_LIBRARY_NAME": "nvidia",
-        "__VK_LAYER_NV_optimus": "NVIDIA_only"
+        "__VK_LAYER_NV_optimus": "NVIDIA_only",
+        // Python
+        "FLAKE8_IGNORE": "E501"
     },
     "mounts": [
         {
