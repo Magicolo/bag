@@ -1,42 +1,37 @@
 from concurrent.futures import ThreadPoolExecutor
 from functools import cached_property
 from posixpath import dirname, join
-from typing import Any, Iterable, List, Literal, Tuple, Union
+from typing import Iterable, List, Literal, Tuple, Union
+
 from cv2 import COLOR_BGR2RGB, circle, cvtColor, line
+from cv2.typing import MatLike, Scalar
 from mediapipe import Image, ImageFormat
 from mediapipe.tasks.python.core.base_options import BaseOptions
-from cv2.typing import MatLike, Scalar
 from mediapipe.tasks.python.vision.core.vision_task_running_mode import (
     VisionTaskRunningMode,
 )
-from mediapipe.tasks.python.vision.holistic_landmarker import (
-    HolisticLandmarker,
-    HolisticLandmarkerOptions,
+from mediapipe.tasks.python.vision.gesture_recognizer import (
+    GestureRecognizer,
+    GestureRecognizerOptions,
 )
 from mediapipe.tasks.python.vision.hand_landmarker import (
     HandLandmarker,
     HandLandmarkerOptions,
     HandLandmarksConnections,
 )
-from mediapipe.tasks.python.vision.pose_landmarker import (
-    PoseLandmarker,
-    PoseLandmarkerOptions,
-)
-from mediapipe.tasks.python.vision.gesture_recognizer import (
-    GestureRecognizer,
-    GestureRecognizerOptions,
+from mediapipe.tasks.python.vision.holistic_landmarker import (
+    HolisticLandmarker,
+    HolisticLandmarkerOptions,
 )
 from mediapipe.tasks.python.vision.image_segmenter import (
     ImageSegmenter,
     ImageSegmenterOptions,
 )
-import numpy
-from torch import Tensor
+from mediapipe.tasks.python.vision.pose_landmarker import (
+    PoseLandmarker,
+    PoseLandmarkerOptions,
+)
 from ultralytics import YOLO
-from ultralytics.models.yolo.pose import PosePredictor
-from ultralytics.nn.tasks import PoseModel
-from ultralytics.utils import ops
-from ultralytics.data.build import load_inference_source
 
 Landmarks = List[Tuple[float, float]]
 Connections = List[Tuple[int, int]]

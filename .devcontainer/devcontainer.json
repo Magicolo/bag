@@ -11,9 +11,7 @@
         "NVIDIA_VISIBLE_DEVICES": "all",
         "__NV_PRIME_RENDER_OFFLOAD": "1",
         "__GLX_VENDOR_LIBRARY_NAME": "nvidia",
-        "__VK_LAYER_NV_optimus": "NVIDIA_only",
-        // Python
-        "FLAKE8_IGNORE": "E501"
+        "__VK_LAYER_NV_optimus": "NVIDIA_only"
     },
     "containerEnv": {
         "COMPOSE_BAKE": "true",
@@ -24,9 +22,7 @@
         "NVIDIA_VISIBLE_DEVICES": "all",
         "__NV_PRIME_RENDER_OFFLOAD": "1",
         "__GLX_VENDOR_LIBRARY_NAME": "nvidia",
-        "__VK_LAYER_NV_optimus": "NVIDIA_only",
-        // Python
-        "FLAKE8_IGNORE": "E501"
+        "__VK_LAYER_NV_optimus": "NVIDIA_only"
     },
     "mounts": [
         {
@@ -124,7 +120,17 @@
                 "rust-analyzer.rustfmt.rangeFormatting.enable": true,
                 // Python
                 "python.analysis.autoImportCompletions": true,
-                "python.analysis.typeCheckingMode": "standard"
+                "python.analysis.typeCheckingMode": "standard",
+                "[python]": {
+                    "editor.codeActionsOnSave": {
+                        "source.fixAll": "always",
+                        "source.fixAll.pylance": "always",
+                        "source.convertImportFormat": "always",
+                        "source.unusedImports": "always",
+                        "source.organizeImports": "always",
+                        "source.reorderImports": "always"
+                    }
+                }
             }
         }
     }
