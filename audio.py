@@ -1,12 +1,12 @@
 from math import sqrt
 from queue import Queue
-from threading import Event, Thread
+from threading import Thread
 from typing import List, Optional, Tuple
 
 from pyo import midiToHz  # type: ignore
-from pyo import Pan, Server, Sine, hzToMidi, pa_get_output_devices
+from pyo import Pan, Server, Sine, hzToMidi, pa_get_output_devices  # type: ignore
 
-from utility import clamp, lerp  # type: ignore
+from utility import clamp, lerp
 
 NATURAL = [0, 0, 2, 3, 3, 5, 5, 7, 8, 8, 10, 10]
 HARMONIC = [0, 0, 2, 3, 3, 5, 5, 7, 8, 8, 8, 11]
@@ -41,28 +41,32 @@ class Audio:
         self._fading: List[Sine] = []
         self._stopped: List[Sine] = []
         self._time = None
-        self._queue = Queue(1)
-        self._abort = Event()
-        self._thread = Thread(target=_run, args=(self._queue, self._abort))
+        self._send = Queue(1)
+        self._thread = Thread(target=_run, args=(self._send,))
         self._thread.start()
 
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
+        self._send.put(None)
+        self._thread.join(1)
         self._server.stop()
-        self._abort.set()
 
     def update(self, data: List[Tuple[float, float]], volume: float, time: float):
-        self._queue.put((data, volume, time / 1000))
+        self._send.put((data, volume, time / 1000))
 
 
-def _run(queue: Queue, abort: Event):
+def _run(receive: Queue):
     _time = None
     _instruments: List[Instrument] = []
 
-    while not abort.is_set():
-        data, volume, time = queue.get()
+    while True:
+        message = receive.get()
+        if message is None:
+            break
+
+        data, volume, time = message
         delta = 0 if _time is None else time - _time
         _time = time
 

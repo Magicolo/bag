@@ -124,8 +124,6 @@
                 "[python]": {
                     "editor.codeActionsOnSave": {
                         "source.fixAll": "always",
-                        "source.fixAll.pylance": "always",
-                        "source.convertImportFormat": "always",
                         "source.unusedImports": "always",
                         "source.organizeImports": "always",
                         "source.reorderImports": "always"

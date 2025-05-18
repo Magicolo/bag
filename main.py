@@ -14,7 +14,7 @@ FINGERS = [
     HandLandmark.PINKY_TIP,
 ]
 
-with Detector() as detector, Camera() as camera, Window() as window, Audio() as audio:
+with Audio() as audio, Camera() as camera, Window() as window, Detector() as detector:
     success = True
     frame = None
     debug = False
