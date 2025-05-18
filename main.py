@@ -3,7 +3,16 @@ from mediapipe.tasks.python.vision.hand_landmarker import HandLandmark
 from audio import Audio
 from camera import Camera
 from detect import Detector
+from utility import clamp
 from window import Window
+
+FINGERS = [
+    HandLandmark.THUMB_TIP,
+    HandLandmark.INDEX_FINGER_TIP,
+    HandLandmark.MIDDLE_FINGER_TIP,
+    HandLandmark.RING_FINGER_TIP,
+    HandLandmark.PINKY_TIP,
+]
 
 with Detector() as detector, Camera() as camera, Window() as window, Audio() as audio:
     success = True
@@ -27,17 +36,11 @@ with Detector() as detector, Camera() as camera, Window() as window, Audio() as 
 
         audio.update(
             [
-                finger
+                (clamp(x), clamp(1 - y) * 500 * (i + 1) + 100)
                 for hand in hands
-                for finger in (
-                    hand[HandLandmark.THUMB_TIP],
-                    hand[HandLandmark.INDEX_FINGER_TIP],
-                    hand[HandLandmark.MIDDLE_FINGER_TIP],
-                    hand[HandLandmark.RING_FINGER_TIP],
-                    hand[HandLandmark.PINKY_TIP],
-                )
+                for i, (x, y) in enumerate(hand[finger] for finger in FINGERS)
             ],
-            0 if mute else 1,
+            0 if mute else 0.1,
             time,
         )
 
