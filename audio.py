@@ -2,7 +2,7 @@ from math import sqrt
 from threading import Thread
 from typing import List, Optional, Tuple
 
-from pyo import SPan, Server, SigTo, Freeverb, Osc, SquareTable, Tone, FM, midiToHz, hzToMidi, pa_get_output_devices  # type: ignore
+from pyo import SPan, Server, SigTo, Freeverb, Osc, Compress, SuperSaw, Sine, SquareTable, Tone, FM, midiToHz, hzToMidi, pa_get_output_devices  # type: ignore
 from channel import Channel
 from utility import clamp
 
@@ -21,10 +21,12 @@ class Instrument:
         self._filter = SigTo(5000)
         if self._index // 5 == 0:
             self._base = Osc(SquareTable(), freq=self._frequency)  # type: ignore
+        elif self._index // 5 == 1:
+            self._base = SuperSaw(self._frequency / 8, detune=Sine([0.4, 0.3], mul=0.2, add=0.5), mul=5)  # type: ignore
         else:
             self._base = FM(self._frequency, ratio=0.5)  # type: ignore
         self._synthesizer = Freeverb(
-            SPan(Tone(self._base, freq=self._filter), mul=self._volume, pan=self._pan),  # type: ignore
+            SPan(Compress(Tone(self._base, freq=self._filter)), mul=self._volume, pan=self._pan),  # type: ignore
             size=0.9,
             bal=0.1,
         ).out()
@@ -37,7 +39,9 @@ class Instrument:
         self._pan.value = pan
 
     def shift(self, frequency: float):
-        self._frequency.value = _note(frequency, self._scale)
+        self._frequency.value = _note(
+            frequency * (self._index % 5 + 1) + 50, self._scale
+        )
 
     def filter(self, frequency: float):
         self._filter.value = frequency

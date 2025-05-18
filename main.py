@@ -29,7 +29,7 @@ with Audio() as audio, Camera() as camera, Window() as window, Detector() as det
             tuple(
                 (
                     clamp(finger.tip.x),
-                    clamp(1 - finger.tip.y) * 2500 * (index + 1) + 50,
+                    clamp(1 - finger.tip.y) * 2500,
                     clamp(cut(finger.tip.speed, 0.025) * 25) * volume,
                 )
                 for hand in hands
