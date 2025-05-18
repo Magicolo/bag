@@ -28,13 +28,19 @@ def distance(
 
 
 def subtract(
-    a: Tuple[float, float, float], b: Tuple[float, float, float]
+    left: Tuple[float, float, float], right: Tuple[float, float, float]
 ) -> Tuple[float, float, float]:
-    return a[0] - b[0], a[1] - b[1], a[2] - b[2]
+    return left[0] - right[0], left[1] - right[1], left[2] - right[2]
 
 
-def multiply(a: Tuple[float, float, float], b: float) -> Tuple[float, float, float]:
-    return a[0] * b, a[1] * b, a[2] * b
+def dot(left: Tuple[float, float, float], right: Tuple[float, float, float]) -> float:
+    return left[0] * right[0] + left[1] * right[1] + left[2] * right[2]
+
+
+def multiply(
+    left: Tuple[float, float, float], right: float
+) -> Tuple[float, float, float]:
+    return left[0] * right, left[1] * right, left[2] * right
 
 
 def magnitude(vector: Tuple[float, float, float]) -> float:

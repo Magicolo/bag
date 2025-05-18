@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from functools import cached_property
+from math import acos, degrees
 from posixpath import dirname, join
 from queue import Queue
 from threading import Thread
@@ -27,7 +28,7 @@ from mediapipe.tasks.python.vision.pose_landmarker import (
 from ultralytics import YOLO
 
 from channel import Channel
-from utility import magnitude
+from utility import dot, magnitude, subtract
 
 Landmarks = List[Tuple[float, float]]
 
@@ -74,7 +75,25 @@ Landmark.DEFAULT = Landmark(
     presence=0.0,
 )
 
-# class Finger
+
+@dataclass(frozen=True)
+class Finger:
+    tip: Landmark
+    dip: Landmark
+    base: Landmark
+
+    @property
+    def angle(self) -> float:
+        v1 = subtract(self.base.position, self.dip.position)
+        v2 = subtract(self.tip.position, self.dip.position)
+        d = dot(v1, v2)
+        m1 = magnitude(v1)
+        m2 = magnitude(v2)
+        if m1 == 0 or m2 == 0:
+            return 0.0
+        else:
+            cos = max(-1.0, min(1.0, d / (m1 * m2)))
+            return degrees(acos(cos))
 
 
 @dataclass(frozen=True)
@@ -87,6 +106,50 @@ class Hand:
     Returns:
         float: -1 is left handed, 1 is right handed
     """
+
+    @property
+    def thumb(self) -> Finger:
+        return Finger(
+            tip=self.landmarks[HandLandmark.THUMB_TIP],
+            dip=self.landmarks[HandLandmark.THUMB_IP],
+            base=self.landmarks[HandLandmark.THUMB_MCP],
+        )
+
+    @property
+    def index(self) -> Finger:
+        return Finger(
+            tip=self.landmarks[HandLandmark.INDEX_FINGER_TIP],
+            dip=self.landmarks[HandLandmark.INDEX_FINGER_PIP],
+            base=self.landmarks[HandLandmark.INDEX_FINGER_MCP],
+        )
+
+    @property
+    def middle(self) -> Finger:
+        return Finger(
+            tip=self.landmarks[HandLandmark.MIDDLE_FINGER_TIP],
+            dip=self.landmarks[HandLandmark.MIDDLE_FINGER_PIP],
+            base=self.landmarks[HandLandmark.MIDDLE_FINGER_MCP],
+        )
+
+    @property
+    def ring(self) -> Finger:
+        return Finger(
+            tip=self.landmarks[HandLandmark.RING_FINGER_TIP],
+            dip=self.landmarks[HandLandmark.RING_FINGER_PIP],
+            base=self.landmarks[HandLandmark.RING_FINGER_MCP],
+        )
+
+    @property
+    def pinky(self) -> Finger:
+        return Finger(
+            tip=self.landmarks[HandLandmark.PINKY_TIP],
+            dip=self.landmarks[HandLandmark.PINKY_PIP],
+            base=self.landmarks[HandLandmark.PINKY_MCP],
+        )
+
+    @property
+    def fingers(self) -> Tuple[Finger, ...]:
+        return self.thumb, self.index, self.middle, self.ring, self.pinky
 
     @property
     def finger_tips(self) -> Tuple[Landmark, ...]:

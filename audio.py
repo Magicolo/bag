@@ -1,37 +1,45 @@
 from math import sqrt
 from threading import Thread
-from typing import Any, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
-from pyo import midiToHz  # type: ignore
-from pyo import Pan, Server, Sine, SigTo, hzToMidi, pa_get_output_devices  # type: ignore
-
+from pyo import SPan, Server, SigTo, Chorus, Freeverb, Tone, FM, midiToHz, hzToMidi, pa_get_output_devices  # type: ignore
 from channel import Channel
 from utility import clamp
 
-PENTA = [0, 0, 2, 2, 4, 4, 4, 7, 7, 9, 9, 9]
-NATURAL = [0, 0, 2, 3, 3, 5, 5, 7, 8, 8, 10, 10]
-HARMONIC = [0, 0, 2, 3, 3, 5, 5, 7, 8, 8, 8, 11]
-MELODIC = [0, 0, 2, 3, 3, 5, 5, 7, 7, 9, 9, 11]
+PENTA = (0, 0, 2, 2, 4, 4, 4, 7, 7, 9, 9, 9)
+NATURAL = (0, 0, 2, 3, 3, 5, 5, 7, 8, 8, 10, 10)
+HARMONIC = (0, 0, 2, 3, 3, 5, 5, 7, 8, 8, 8, 11)
+MELODIC = (0, 0, 2, 3, 3, 5, 5, 7, 7, 9, 9, 11)
 
 
 class Instrument:
-    def __init__(self, scale: List[int]):
-        self._play: Any = Pan(
-            Sine(freq=SigTo(0, time=0.01)),  # type: ignore
-            mul=SigTo(0),  # type: ignore
-            pan=SigTo(0.5),  # type: ignore
-            spread=0.1,
+    def __init__(self, scale: Tuple[int, ...]):
+        self._frequency = SigTo(0, time=0.01)
+        self._volume = SigTo(0)
+        self._pan = SigTo(0.5)
+        self._filter = SigTo(5000, time=0.01)
+        self._synthesizer = Freeverb(
+            SPan(
+                Chorus(Tone(FM(self._frequency, ratio=0.25), freq=self._filter)),  # type: ignore
+                mul=self._volume,  # type: ignore
+                pan=self._pan,  # type: ignore
+            ),
+            size=0.9,
+            bal=0.1,
         ).out()
         self._scale = scale
 
     def fade(self, volume: float):
-        self._play.mul.value = volume
+        self._volume.value = volume
 
     def pan(self, pan: float):
-        self._play.pan.value = pan
+        self._pan.value = pan
 
     def shift(self, frequency: float):
-        self._play.input.freq.value = _note(frequency, self._scale)
+        self._frequency.value = _note(frequency, self._scale)
+
+    def filter(self, frequency: float):
+        self._filter.value = frequency
 
 
 class Audio:
@@ -67,6 +75,7 @@ def _actor(channel: Channel[Tuple[Tuple[float, float, float], ...]]):
             attenuate = sqrt(clamp(1 / (len(data) + 1)))
             for instrument, (pan, frequency, volume) in zip(_instruments, data):
                 instrument.shift(frequency)
+                instrument.filter(frequency + 250)
                 instrument.pan(pan)
                 instrument.fade(volume * attenuate)
 
@@ -82,7 +91,7 @@ def _device() -> Optional[int]:
             return index
 
 
-def _note(frequency: float, scale: List[int]) -> float:
+def _note(frequency: float, scale: Tuple[int, ...]) -> float:
     frequency = max(frequency, 1)
     midi = int(hzToMidi(frequency))
     degree = midi % len(scale)

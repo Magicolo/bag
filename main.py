@@ -28,14 +28,12 @@ with Audio() as audio, Camera() as camera, Window() as window, Detector() as det
         audio.send(
             tuple(
                 (
-                    clamp(tip.x),
-                    clamp(1 - tip.y) * 2500 * (index + 1) + 100,
-                    clamp(cut(tip.speed, 0.025) * 25) * volume,
+                    clamp(finger.tip.x),
+                    clamp(1 - finger.tip.y) * 2500 * (index + 1) + 50,
+                    clamp(cut(finger.tip.speed, 0.025) * 25) * volume,
                 )
                 for hand in hands
-                for index, (tip, base) in enumerate(
-                    zip(hand.finger_tips, hand.finger_bases)
-                )
+                for index, finger in enumerate(hand.fingers)
             )
         )
 
