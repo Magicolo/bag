@@ -8,6 +8,7 @@ from pyo import Pan, Server, Sine, hzToMidi, pa_get_output_devices  # type: igno
 
 from utility import clamp, lerp
 
+PENTA = [0, 0, 2, 2, 4, 4, 4, 7, 7, 9, 9, 9]
 NATURAL = [0, 0, 2, 3, 3, 5, 5, 7, 8, 8, 10, 10]
 HARMONIC = [0, 0, 2, 3, 3, 5, 5, 7, 8, 8, 8, 11]
 MELODIC = [0, 0, 2, 3, 3, 5, 5, 7, 7, 9, 9, 11]
@@ -53,12 +54,17 @@ class Audio:
         self._thread.join(1)
         self._server.stop()
 
-    def update(self, data: List[Tuple[float, float]], volume: float, time: float):
-        self._send.put((data, volume, time / 1000))
+    def update(
+        self,
+        data: List[Tuple[float, float, float]],
+        volume: float,
+        time: float,
+        delta: float,
+    ):
+        self._send.put((data, volume, time, delta))
 
 
 def _run(receive: Queue):
-    _time = None
     _instruments: List[Instrument] = []
 
     while True:
@@ -66,18 +72,15 @@ def _run(receive: Queue):
         if message is None:
             break
 
-        data, volume, time = message
-        delta = 0 if _time is None else time - _time
-        _time = time
-
+        data, volume, time, delta = message
         while len(_instruments) < len(data):
             _instruments.append(Instrument(NATURAL))
 
         volume = sqrt(clamp(volume / (len(data) + 1)))
-        for instrument, (pan, frequency) in zip(_instruments, data):
+        for instrument, (pan, frequency, amplitude) in zip(_instruments, data):
             instrument.shift(frequency)
             instrument.pan(pan, delta)
-            instrument.fade(volume, delta * 5)
+            instrument.fade(volume * amplitude, delta * 10)
 
         for instrument in _instruments[len(data) :]:
             instrument.fade(0, delta)

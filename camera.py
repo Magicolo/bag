@@ -25,13 +25,16 @@ class Camera:
     def __exit__(self, exc_type, exc_value, traceback):
         self._camera.release()
 
-    def frames(self) -> Iterable[Tuple[MatLike, int]]:
+    def frames(self) -> Iterable[Tuple[MatLike, int, int]]:
+        _time = None
         while self._camera.isOpened():
             success, frame = self._camera.read(self._frame)
             self._frame = frame
             if success:
                 frame = flip(frame, 1, frame)
                 time = int(self._camera.get(CAP_PROP_POS_MSEC))
-                yield frame, time
+                delta = 0 if _time is None else time - _time
+                _time = time
+                yield frame, time, delta
             else:
                 break
