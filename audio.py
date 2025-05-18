@@ -2,7 +2,7 @@ from math import sqrt
 from threading import Thread
 from typing import List, Optional, Tuple
 
-from pyo import SPan, Server, SigTo, Chorus, Freeverb, Tone, FM, midiToHz, hzToMidi, pa_get_output_devices  # type: ignore
+from pyo import SPan, Server, SigTo, Freeverb, Osc, SquareTable, Tone, FM, midiToHz, hzToMidi, pa_get_output_devices  # type: ignore
 from channel import Channel
 from utility import clamp
 
@@ -13,17 +13,18 @@ MELODIC = (0, 0, 2, 3, 3, 5, 5, 7, 7, 9, 9, 11)
 
 
 class Instrument:
-    def __init__(self, scale: Tuple[int, ...]):
-        self._frequency = SigTo(0, time=0.01)
+    def __init__(self, index: int, scale: Tuple[int, ...]):
+        self._index = index
+        self._frequency = SigTo(0, time=0.025)
         self._volume = SigTo(0)
         self._pan = SigTo(0.5)
-        self._filter = SigTo(5000, time=0.01)
+        self._filter = SigTo(5000)
+        if self._index // 5 == 0:
+            self._base = Osc(SquareTable(), freq=self._frequency)  # type: ignore
+        else:
+            self._base = FM(self._frequency, ratio=0.5)  # type: ignore
         self._synthesizer = Freeverb(
-            SPan(
-                Chorus(Tone(FM(self._frequency, ratio=0.25), freq=self._filter)),  # type: ignore
-                mul=self._volume,  # type: ignore
-                pan=self._pan,  # type: ignore
-            ),
+            SPan(Tone(self._base, freq=self._filter), mul=self._volume, pan=self._pan),  # type: ignore
             size=0.9,
             bal=0.1,
         ).out()
@@ -70,12 +71,12 @@ def _actor(channel: Channel[Tuple[Tuple[float, float, float], ...]]):
             data = channel.get()
 
             while len(_instruments) < len(data):
-                _instruments.append(Instrument(NATURAL))
+                _instruments.append(Instrument(len(_instruments), NATURAL))
 
             attenuate = sqrt(clamp(1 / (len(data) + 1)))
             for instrument, (pan, frequency, volume) in zip(_instruments, data):
                 instrument.shift(frequency)
-                instrument.filter(frequency + 250)
+                instrument.filter(frequency + 500)
                 instrument.pan(pan)
                 instrument.fade(volume * attenuate)
 
