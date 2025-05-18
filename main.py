@@ -1,54 +1,42 @@
-from mediapipe.tasks.python.vision.hand_landmarker import HandLandmark
-
 from audio import Audio
 from camera import Camera
 from detect import Detector
 from utility import clamp, cut
 from window import Window
 
-FINGERS = [
-    HandLandmark.THUMB_TIP,
-    HandLandmark.INDEX_FINGER_TIP,
-    HandLandmark.MIDDLE_FINGER_TIP,
-    HandLandmark.RING_FINGER_TIP,
-    HandLandmark.PINKY_TIP,
-]
-
 with Audio() as audio, Camera() as camera, Window() as window, Detector() as detector:
     success = True
     frame = None
-    debug = False
+    show = False
     mute = False
-    for frame, time, delta in camera.frames():
+    for frame, time in camera.frames():
         hands, poses = detector.detect(frame, time)
 
-        # if debug:
-        #     frame = detector.draw(frame, hands, poses)
+        if show:
+            frame = detector.draw(frame, hands, poses)
 
         key, change = window.show(frame)
         if change:
             if key == ord("d"):
-                debug = not debug
+                show = not show
             elif key == ord("m"):
                 mute = not mute
             elif key in (ord("q"), 27):
                 break
 
-        audio.update(
-            [
+        volume = 0 if mute else 0.1
+        audio.send(
+            tuple(
                 (
                     clamp(tip.x),
                     clamp(1 - tip.y) * 2500 * (index + 1) + 100,
-                    clamp(cut(tip.speed(delta / 1000), 0.005) * 100),
+                    clamp(cut(tip.speed, 0.025) * 25) * volume,
                 )
                 for hand in hands
                 for index, (tip, base) in enumerate(
                     zip(hand.finger_tips, hand.finger_bases)
                 )
-            ],
-            0 if mute else 0.1,
-            time / 1000,
-            delta / 1000,
+            )
         )
 
 

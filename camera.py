@@ -1,3 +1,4 @@
+from threading import Thread
 from typing import Iterable, Tuple
 
 from cv2 import (
@@ -10,31 +11,42 @@ from cv2 import (
 )
 from cv2.typing import MatLike
 
+from channel import Channel
+
 
 class Camera:
     def __init__(self):
-        self._camera = VideoCapture(0)
-        self._camera.set(CAP_PROP_FRAME_WIDTH, 1)
-        self._camera.set(CAP_PROP_FRAME_HEIGHT, 1)
-        self._camera.set(CAP_PROP_FPS, 30)
-        self._frame = None
+        self._channel = Channel[Tuple[MatLike, int]]()
+        self._thread = Thread(target=_actor, args=(self._channel,))
+        self._thread.start()
 
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        self._camera.release()
+        self._channel.close()
+        self._thread.join()
 
-    def frames(self) -> Iterable[Tuple[MatLike, int, int]]:
-        _time = None
-        while self._camera.isOpened():
-            success, frame = self._camera.read(self._frame)
-            self._frame = frame
+    def frames(self) -> Iterable[Tuple[MatLike, int]]:
+        while True:
+            yield self._channel.get()
+
+
+def _actor(channel: Channel[Tuple[MatLike, int]]):
+    _camera = VideoCapture(0)
+
+    try:
+        _camera.set(CAP_PROP_FRAME_WIDTH, 1)
+        _camera.set(CAP_PROP_FRAME_HEIGHT, 1)
+        _camera.set(CAP_PROP_FPS, 30)
+
+        while _camera.isOpened():
+            success, frame = _camera.read()
             if success:
                 frame = flip(frame, 1, frame)
-                time = int(self._camera.get(CAP_PROP_POS_MSEC))
-                delta = 0 if _time is None else time - _time
-                _time = time
-                yield frame, time, delta
+                time = int(_camera.get(CAP_PROP_POS_MSEC))
+                channel.put((frame, time))
             else:
                 break
+    finally:
+        _camera.release()

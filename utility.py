@@ -1,5 +1,12 @@
 from math import sqrt
-from typing import Tuple
+from typing import Tuple, TypeVar
+
+_T = TypeVar("_T")
+
+
+def debug(value: _T) -> _T:
+    print(value)
+    return value
 
 
 def clamp(value: float, minimum: float = 0, maximum: float = 1) -> float:
