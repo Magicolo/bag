@@ -11,11 +11,16 @@ NATURAL = (0, 0, 2, 3, 3, 5, 5, 7, 8, 8, 10, 10)
 HARMONIC = (0, 0, 2, 3, 3, 5, 5, 7, 8, 8, 8, 11)
 MELODIC = (0, 0, 2, 3, 3, 5, 5, 7, 7, 9, 9, 11)
 
+# TODO: Create an evaluation loop to tweak the instruments. Use Python's eval and an 'instruments' folder.
+# TODO: Finger that touch must charge a note.
+# TODO: Convert kick/punch impacts in cymbal/percussion-like sounds.
+# TODO: Use handedness to choose the instrument.
+
 
 class Instrument:
     def __init__(self, index: int, scale: Tuple[int, ...]):
         self._index = index
-        self._frequency = SigTo(0, time=0.025)
+        self._frequency = SigTo(0)
         self._volume = SigTo(0)
         self._pan = SigTo(0.5)
         self._filter = SigTo(5000)

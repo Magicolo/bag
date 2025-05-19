@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from enum import Enum
 from functools import cached_property
 from math import acos, degrees
 from posixpath import dirname, join
@@ -15,10 +16,12 @@ from mediapipe.tasks.python.vision.core.vision_task_running_mode import (
     VisionTaskRunningMode,
 )
 from mediapipe.tasks.python.vision.hand_landmarker import (
-    HandLandmarker,
     HandLandmark,
-    HandLandmarkerOptions,
     HandLandmarksConnections,
+)
+from mediapipe.tasks.python.vision.gesture_recognizer import (
+    GestureRecognizer,
+    GestureRecognizerOptions,
 )
 from mediapipe.tasks.python.vision.pose_landmarker import (
     PoseLandmarker,
@@ -31,6 +34,37 @@ from channel import Channel
 from utility import dot, magnitude, subtract
 
 Landmarks = List[Tuple[float, float]]
+
+
+class Gesture(Enum):
+    NONE = 0
+    CLOSED_FIST = 1
+    OPEN_PALM = 2
+    POINTING_UP = 3
+    THUMB_DOWN = 4
+    THUMB_UP = 5
+    VICTORY = 6
+    ILOVEYOU = 7
+
+    @staticmethod
+    def from_name(name: str):
+        try:
+            return Gesture[name.upper()]
+        except ValueError:
+            return Gesture.NONE
+
+
+class Handedness(Enum):
+    NONE = 0
+    LEFT = -1
+    RIGHT = 1
+
+    @staticmethod
+    def from_name(name: str):
+        try:
+            return Handedness[name.upper()]
+        except ValueError:
+            return Handedness.NONE
 
 
 @dataclass(frozen=True)
@@ -101,7 +135,8 @@ class Hand:
     DEFAULT: ClassVar["Hand"]
 
     landmarks: Tuple[Landmark, ...]
-    handedness: float
+    handedness: Handedness
+    gesture: Gesture
     """
     Returns:
         float: -1 is left handed, 1 is right handed
@@ -176,24 +211,25 @@ class Hand:
         return self.landmarks[HandLandmark.WRIST]
 
     def updated(
-        self, landmarks: Iterable[NormalizedLandmark], category: Category
+        self,
+        landmarks: Iterable[NormalizedLandmark],
+        handedness: Category,
+        gesture: Category,
     ) -> "Hand":
         return Hand(
             landmarks=tuple(
                 landmark.updated(normalized)
                 for landmark, normalized in zip(self.landmarks, landmarks)
             ),
-            handedness=(
-                category.score or 0.0
-                if category.index == 0
-                else -(category.score or 0.0) if category.index == 1 else 0.0
-            ),
+            handedness=Handedness.from_name(handedness.category_name or ""),
+            gesture=Gesture.from_name(gesture.category_name or ""),
         )
 
 
 Hand.DEFAULT = Hand(
     landmarks=tuple(Landmark.DEFAULT for _ in range(21)),
-    handedness=0.0,
+    handedness=Handedness.NONE,
+    gesture=Gesture.NONE,
 )
 
 
@@ -266,11 +302,13 @@ class Detector:
 
 
 def _hands_actor(receive: Channel[Tuple[Image, int]], send: Channel[Tuple[Hand, ...]]):
-    def load() -> HandLandmarker:
-        return HandLandmarker.create_from_options(
-            HandLandmarkerOptions(
+    def load() -> GestureRecognizer:
+        return GestureRecognizer.create_from_options(
+            GestureRecognizerOptions(
                 base_options=BaseOptions(
-                    model_asset_path=_model_path("mediapipe", "hand_landmarker.task"),
+                    model_asset_path=_model_path(
+                        "mediapipe", "gesture_recognizer.task"
+                    ),
                     delegate=BaseOptions.Delegate.GPU,
                 ),
                 running_mode=VisionTaskRunningMode.VIDEO,
@@ -282,17 +320,18 @@ def _hands_actor(receive: Channel[Tuple[Image, int]], send: Channel[Tuple[Hand, 
     with load() as model:
         while True:
             image, time = receive.get()
-            result = model.detect_for_video(image, time)
+            result = model.recognize_for_video(image, time)
             defaults = (
                 Hand.DEFAULT
                 for _ in range(max(len(result.hand_landmarks) - len(_hands), 0))
             )
             _hands = tuple(
-                hand.updated(landmarks, handedness[0])
-                for hand, landmarks, handedness in zip(
+                hand.updated(landmarks, handedness[0], gestures[0])
+                for hand, landmarks, handedness, gestures in zip(
                     (*_hands, *defaults),
                     result.hand_landmarks,
                     result.handedness,
+                    result.gestures,
                 )
             )
             send.put(_hands)
