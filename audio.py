@@ -1,8 +1,11 @@
+from dataclasses import dataclass
 from math import sqrt
+from pathlib import Path
+from runpy import run_path
 from threading import Thread
-from typing import List, Optional, Tuple
+from typing import Callable, ClassVar, Iterable, List, Optional, Tuple
 
-from pyo import SPan, Server, SigTo, Freeverb, Osc, Compress, SuperSaw, Sine, SquareTable, Tone, FM, midiToHz, hzToMidi, pa_get_output_devices  # type: ignore
+from pyo import SPan, Server, PyoObject, Sine, SigTo, Freeverb, Compress, Tone, midiToHz, hzToMidi, pa_get_output_devices  # type: ignore
 from channel import Channel
 from utility import clamp
 
@@ -17,25 +20,47 @@ MELODIC = (0, 0, 2, 3, 3, 5, 5, 7, 7, 9, 9, 11)
 # TODO: Use handedness to choose the instrument.
 
 
+@dataclass(frozen=True)
+class Factory:
+    DEFAULT: ClassVar["Factory"]
+
+    new: Callable[[PyoObject], PyoObject]
+    name: str
+    stamp: float
+
+
+Factory.DEFAULT = Factory(
+    new=lambda frequency: Sine(freq=frequency),  # type: ignore
+    name="default",
+    stamp=0,
+)
+
+
+@dataclass(frozen=True)
+class Sound:
+    frequency: float
+    volume: float
+    pan: Optional[float]
+    filter: Optional[float]
+
+
 class Instrument:
-    def __init__(self, index: int, scale: Tuple[int, ...]):
-        self._index = index
+    def __init__(self, factory: Factory, scale: Tuple[int, ...]):
+        self._factory = factory
         self._frequency = SigTo(0)
         self._volume = SigTo(0)
         self._pan = SigTo(0.5)
         self._filter = SigTo(5000)
-        if self._index // 5 == 0:
-            self._base = Osc(SquareTable(), freq=self._frequency)  # type: ignore
-        elif self._index // 5 == 1:
-            self._base = SuperSaw(self._frequency / 8, detune=Sine([0.4, 0.3], mul=0.2, add=0.5), mul=5)  # type: ignore
-        else:
-            self._base = FM(self._frequency, ratio=0.5)  # type: ignore
+        self._base = self._factory.new(self._frequency)
         self._synthesizer = Freeverb(
             SPan(Compress(Tone(self._base, freq=self._filter)), mul=self._volume, pan=self._pan),  # type: ignore
             size=0.9,
             bal=0.1,
         ).out()
         self._scale = scale
+
+    def stop(self):
+        self._synthesizer.stop()
 
     def fade(self, volume: float):
         self._volume.value = volume
@@ -44,17 +69,18 @@ class Instrument:
         self._pan.value = pan
 
     def shift(self, frequency: float):
-        self._frequency.value = _note(
-            frequency * (self._index % 5 + 1) + 50, self._scale
-        )
+        self._frequency.value = _note(frequency, self._scale)
 
     def filter(self, frequency: float):
         self._filter.value = frequency
 
 
+_Message = Tuple[Tuple[Sound, ...], bool]
+
+
 class Audio:
     def __init__(self):
-        self._channel = Channel[Tuple[Tuple[float, float, float], ...]]()
+        self._channel = Channel[_Message]()
         self._thread = Thread(target=_actor, args=(self._channel,))
         self._thread.start()
 
@@ -65,31 +91,53 @@ class Audio:
         self._channel.close()
         self._thread.join()
 
-    def send(self, data: Tuple[Tuple[float, float, float], ...]):
-        self._channel.put(data)
+    def send(self, sounds: Tuple[Sound, ...], reset: bool = False):
+        self._channel.put((sounds, reset))
 
 
-def _actor(channel: Channel[Tuple[Tuple[float, float, float], ...]]):
+def _actor(channel: Channel[_Message]):
+    def factories() -> Iterable[Factory]:
+        for file in sorted(
+            Path(__file__).parent.joinpath("instruments").iterdir(),
+            key=lambda file: file.stem,
+        ):
+            if file.is_file() and file.suffix == ".py":
+                name = file.stem
+                stamp = file.stat().st_mtime
+                new = run_path(f"{file}").get("new", None)
+                if new:
+                    yield Factory(new=new, name=name, stamp=stamp)
+
     _server = Server(duplex=0, nchnls=2)
     _instruments: List[Instrument] = []
+    _factories = tuple(factories())
 
     try:
         _server.setInOutDevice(_device())
         _server.boot().start()
         while True:
-            data = channel.get()
+            sounds, reset = channel.get()
 
-            while len(_instruments) < len(data):
-                _instruments.append(Instrument(len(_instruments), NATURAL))
+            if reset:
+                _factories = tuple(factories())
+                for instrument in _instruments:
+                    instrument.stop()
+                _instruments.clear()
 
-            attenuate = sqrt(clamp(1 / (len(data) + 1)))
-            for instrument, (pan, frequency, volume) in zip(_instruments, data):
+            while len(_instruments) < len(sounds):
+                index = len(_instruments)
+                factory = _factories[(index // 5) % len(_factories)]
+                _instruments.append(Instrument(factory, NATURAL))
+
+            attenuate = sqrt(clamp(1 / (len(sounds) + 1)))
+            for index, (instrument, sound) in enumerate(zip(_instruments, sounds)):
+                frequency = sound.frequency * (index % 5 + 1) + 50.0
                 instrument.shift(frequency)
-                instrument.filter(frequency + 500)
-                instrument.pan(pan)
-                instrument.fade(volume * attenuate)
+                instrument.filter(sound.filter or frequency + 500.0)
+                instrument.pan(sound.pan or 0.5)
+                instrument.fade(sound.volume * attenuate)
 
-            for instrument in _instruments[len(data) :]:
+            for instrument in _instruments[len(sounds) :]:
                 instrument.fade(0)
     finally:
         _server.stop()

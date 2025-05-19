@@ -31,7 +31,7 @@ from mediapipe.tasks.python.vision.pose_landmarker import (
 from ultralytics import YOLO
 
 from channel import Channel
-from utility import dot, magnitude, subtract
+from utility import distance, dot, magnitude, subtract
 
 Landmarks = List[Tuple[float, float]]
 
@@ -129,6 +129,10 @@ class Finger:
             cos = max(-1.0, min(1.0, d / (m1 * m2)))
             return degrees(acos(cos))
 
+    def touches(self, finger: "Finger") -> bool:
+        reference = distance(self.tip.position, self.dip.position)
+        return distance(self.tip.position, finger.tip.position) < reference
+
 
 @dataclass(frozen=True)
 class Hand:
@@ -137,10 +141,7 @@ class Hand:
     landmarks: Tuple[Landmark, ...]
     handedness: Handedness
     gesture: Gesture
-    """
-    Returns:
-        float: -1 is left handed, 1 is right handed
-    """
+    frames: int
 
     @property
     def thumb(self) -> Finger:
@@ -223,6 +224,7 @@ class Hand:
             ),
             handedness=Handedness.from_name(handedness.category_name or ""),
             gesture=Gesture.from_name(gesture.category_name or ""),
+            frames=self.frames + 1,
         )
 
 
@@ -230,6 +232,7 @@ Hand.DEFAULT = Hand(
     landmarks=tuple(Landmark.DEFAULT for _ in range(21)),
     handedness=Handedness.NONE,
     gesture=Gesture.NONE,
+    frames=0,
 )
 
 

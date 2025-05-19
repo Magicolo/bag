@@ -1,4 +1,4 @@
-from audio import Audio
+from audio import Audio, Sound
 from camera import Camera
 from detect import Detector
 from utility import clamp, cut
@@ -15,10 +15,13 @@ with Audio() as audio, Camera() as camera, Window() as window, Detector() as det
         if show:
             frame = detector.draw(frame, hands, poses)
 
+        reset = False
         key, change = window.show(frame)
         if change:
             if key == ord("d"):
                 show = not show
+            elif key == ord("r"):
+                reset = True
             elif key == ord("m"):
                 mute = not mute
             elif key in (ord("q"), 27):
@@ -27,14 +30,16 @@ with Audio() as audio, Camera() as camera, Window() as window, Detector() as det
         volume = 0 if mute else 0.1
         audio.send(
             tuple(
-                (
-                    clamp(finger.tip.x),
-                    clamp(1 - finger.tip.y) * 2500,
-                    clamp(cut(finger.tip.speed, 0.025) * 25) * volume,
+                Sound(
+                    frequency=clamp(1 - finger.tip.y) * 2500,
+                    volume=clamp(cut(finger.tip.speed, 0.025) * 10) * volume,
+                    pan=clamp(finger.tip.x),
+                    filter=(100.0 if finger.touches(hand.thumb) else None),
                 )
                 for hand in hands
-                for index, finger in enumerate(hand.fingers)
-            )
+                for finger in hand.fingers
+            ),
+            reset,
         )
 
 
