@@ -30,8 +30,8 @@ from mediapipe.tasks.python.vision.pose_landmarker import (
 )
 from ultralytics import YOLO
 
-from channel import Channel
-from utility import distance, dot, magnitude, subtract
+from channel import Channel, Closed
+from utility import catch, distance, dot, magnitude, subtract
 
 Landmarks = List[Tuple[float, float]]
 
@@ -241,8 +241,8 @@ class Detector:
         self._hands = Channel[Tuple[Image, int]](), Channel[Tuple[Hand, ...]]()
         self._poses = Channel[Tuple[Image, int]](), Channel[List[Landmarks]]()
         self._threads = (
-            Thread(target=_hands_actor, args=self._hands),
-            Thread(target=_poses_actor, args=self._poses),
+            Thread(target=catch(_hands_actor, Closed, ()), args=self._hands),
+            Thread(target=catch(_poses_actor, Closed, ()), args=self._poses),
         )
         for thread in self._threads:
             thread.start()

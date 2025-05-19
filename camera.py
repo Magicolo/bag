@@ -11,13 +11,14 @@ from cv2 import (
 )
 from cv2.typing import MatLike
 
-from channel import Channel
+from channel import Channel, Closed
+from utility import catch
 
 
 class Camera:
     def __init__(self):
         self._channel = Channel[Tuple[MatLike, int]]()
-        self._thread = Thread(target=_actor, args=(self._channel,))
+        self._thread = Thread(target=catch(_actor, Closed, ()), args=(self._channel,))
         self._thread.start()
 
     def __enter__(self):

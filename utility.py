@@ -1,5 +1,5 @@
 from math import sqrt
-from typing import Tuple, TypeVar
+from typing import Tuple, Type, TypeVar
 
 _T = TypeVar("_T")
 
@@ -50,3 +50,13 @@ def magnitude(vector: Tuple[float, float, float]) -> float:
 def normalize(vector: Tuple[float, float, float]) -> Tuple[float, float, float]:
     magnitude = sqrt(vector[0] ** 2 + vector[1] ** 2 + vector[2] ** 2)
     return vector[0] / magnitude, vector[1] / magnitude, vector[2] / magnitude
+
+
+def catch(function, error: Type[Exception], default):
+    def run(*arguments):
+        try:
+            return function(*arguments)
+        except error:
+            return default
+
+    return run

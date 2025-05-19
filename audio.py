@@ -6,8 +6,8 @@ from threading import Thread
 from typing import Callable, ClassVar, Iterable, List, Optional, Tuple
 
 from pyo import SPan, Server, PyoObject, Sine, SigTo, Freeverb, Compress, Tone, midiToHz, hzToMidi, pa_get_output_devices  # type: ignore
-from channel import Channel
-from utility import clamp
+from channel import Channel, Closed
+from utility import catch, clamp
 
 PENTA = (0, 0, 2, 2, 4, 4, 4, 7, 7, 9, 9, 9)
 NATURAL = (0, 0, 2, 3, 3, 5, 5, 7, 8, 8, 10, 10)
@@ -81,7 +81,7 @@ _Message = Tuple[Tuple[Sound, ...], bool]
 class Audio:
     def __init__(self):
         self._channel = Channel[_Message]()
-        self._thread = Thread(target=_actor, args=(self._channel,))
+        self._thread = Thread(target=catch(_actor, Closed, ()), args=(self._channel,))
         self._thread.start()
 
     def __enter__(self):

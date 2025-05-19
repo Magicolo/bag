@@ -1,10 +1,14 @@
-from threading import Condition, Lock, ThreadError
+from threading import Condition, Lock
 from typing import Generic, Tuple
 from typing import Any, Optional, TypeVar
 
 _T = TypeVar("_T")
 _EMPTY: Any = object()
 _CLOSE: Any = object()
+
+
+class Closed(Exception):
+    pass
 
 
 class Channel(Generic[_T]):
@@ -28,7 +32,7 @@ class Channel(Generic[_T]):
         while True:
             with self._lock:
                 if self._value is _CLOSE:
-                    raise ThreadError("channel is closed")
+                    raise Closed("channel is closed")
                 elif self._value is _EMPTY:
                     if timeout <= 0.0:
                         return None
@@ -44,7 +48,7 @@ class Channel(Generic[_T]):
         while True:
             with self._lock:
                 if self._value is _CLOSE:
-                    raise ThreadError("channel is closed")
+                    raise Closed("channel is closed")
                 elif self._value is _EMPTY:
                     self._wait.wait()
                 else:
@@ -55,7 +59,7 @@ class Channel(Generic[_T]):
     def put(self, value: _T) -> Optional[_T]:
         with self._lock:
             if self._value is _CLOSE:
-                raise ThreadError("channel is closed")
+                raise Closed("channel is closed")
             else:
                 old = self._value
                 self._value = value
