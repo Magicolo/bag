@@ -31,8 +31,8 @@ with Audio() as audio, Camera() as camera, Window() as window, Detector() as det
         audio.send(
             tuple(
                 Sound(
-                    frequency=clamp(1 - finger.tip.y) * 2500,
-                    volume=clamp(cut(finger.tip.speed, 0.025) * 10) * volume,
+                    frequency=clamp(1 - finger.tip.y) * 1000,
+                    volume=clamp(cut(finger.tip.speed, 0.025) * 100) * volume,
                     pan=clamp(finger.tip.x),
                     filter=(100.0 if finger.touches(hand.thumb) else None),
                 )
