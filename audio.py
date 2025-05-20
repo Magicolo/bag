@@ -5,7 +5,7 @@ from runpy import run_path
 from threading import Thread
 from typing import Callable, ClassVar, Iterable, List, Optional, Tuple
 
-from pyo import SPan, Server, PyoObject, Sine, SigTo, Freeverb, Compress, Tone, midiToHz, hzToMidi, pa_get_output_devices  # type: ignore
+from pyo import SPan, Server, PyoObject, Sine, MoogLP, SigTo, Freeverb, midiToHz, hzToMidi, pa_get_output_devices  # type: ignore
 from channel import Channel, Closed
 from utility import catch, clamp
 
@@ -18,6 +18,8 @@ MELODIC = (0, 0, 2, 3, 3, 5, 5, 7, 7, 9, 9, 11)
 # TODO: Finger that touch must charge a note.
 # TODO: Convert kick/punch impacts in cymbal/percussion-like sounds.
 # TODO: Use handedness to choose the instrument.
+# TODO: When 4 right hands are detected, make it special.
+# TODO: When 4 left hands are detected, make it special.
 
 
 @dataclass(frozen=True)
@@ -53,7 +55,7 @@ class Instrument:
         self._filter = SigTo(5000)
         self._base = self._factory.new(self._frequency)
         self._synthesizer = Freeverb(
-            SPan(Compress(Tone(self._base, freq=self._filter)), mul=self._volume, pan=self._pan),  # type: ignore
+            SPan(MoogLP(self._base, freq=self._filter, res=1.25), mul=self._volume, pan=self._pan),  # type: ignore
             size=0.9,
             bal=0.1,
         ).out()
@@ -129,7 +131,7 @@ def _actor(channel: Channel[_Message]):
                 factory = _factories[(index // 5) % len(_factories)]
                 _instruments.append(Instrument(factory, NATURAL))
 
-            attenuate = sqrt(clamp(1 / (len(sounds) + 1)))
+            attenuate = sqrt(clamp(1 / (len(sounds) + 1))) / 100
             for index, (instrument, sound) in enumerate(zip(_instruments, sounds)):
                 frequency = sound.frequency * (index % 5 + 1) + 50.0
                 instrument.shift(frequency)

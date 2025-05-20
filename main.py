@@ -27,14 +27,14 @@ with Audio() as audio, Camera() as camera, Window() as window, Detector() as det
             elif key in (ord("q"), 27):
                 break
 
-        volume = 0 if mute else 0.1
+        volume = 0.0 if mute else 1.0
         audio.send(
             tuple(
                 Sound(
-                    frequency=clamp(1 - finger.tip.y) * 1000,
-                    volume=clamp(cut(finger.tip.speed, 0.025) * 100) * volume,
+                    frequency=clamp(1 - finger.tip.y) * 1000.0,
+                    volume=clamp(cut(finger.tip.speed, 0.025) * 10.0) * volume,
                     pan=clamp(finger.tip.x),
-                    filter=(100.0 if finger.touches(hand.thumb) else None),
+                    filter=min(finger.tip.speed**2 * 25e5, 20000.0),
                 )
                 for hand in hands
                 for finger in hand.fingers
