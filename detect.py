@@ -2,9 +2,8 @@ from dataclasses import dataclass
 from enum import Enum
 from functools import cached_property
 from pathlib import Path
-from queue import Queue
 from threading import Thread
-from typing import ClassVar, Iterable, List, Literal, Tuple, Union
+from typing import ClassVar, Iterable, List, Literal, Sequence, Tuple, Union
 from mediapipe.tasks.python.components.containers.landmark import NormalizedLandmark
 from cv2 import COLOR_BGR2RGB, circle, cvtColor, line
 from cv2.typing import MatLike, Scalar
@@ -32,6 +31,7 @@ from ultralytics import YOLO
 from channel import Channel, Closed
 from utility import catch
 import vector
+from vector import Vector
 
 Landmarks = List[Tuple[float, float]]
 
@@ -71,8 +71,8 @@ class Handedness(Enum):
 class Landmark:
     DEFAULT: ClassVar["Landmark"]
 
-    position: Tuple[float, float, float]
-    velocity: Tuple[float, float, float]
+    position: Vector
+    velocity: Vector
     visibility: float
     presence: float
 
@@ -129,12 +129,16 @@ class Finger:
         return self.position[2]
 
     @cached_property
-    def position(self) -> Tuple[float, float, float]:
+    def position(self) -> Vector:
         return vector.mean(self.tip.position, self.dip.position, self.base.position)
 
     @cached_property
-    def velocity(self) -> Tuple[float, float, float]:
+    def velocity(self) -> Vector:
         return vector.mean(self.tip.velocity, self.dip.velocity, self.base.velocity)
+
+    @cached_property
+    def speed(self) -> float:
+        return vector.magnitude(self.velocity)
 
     @cached_property
     def angle(self) -> float:
@@ -167,12 +171,16 @@ class Hand:
         return self.position[2]
 
     @cached_property
-    def position(self) -> Tuple[float, float, float]:
+    def position(self) -> Vector:
         return vector.mean(*(landmark.position for landmark in self.landmarks))
 
     @cached_property
-    def velocity(self) -> Tuple[float, float, float]:
+    def velocity(self) -> Vector:
         return vector.mean(*(landmark.position for landmark in self.landmarks))
+
+    @cached_property
+    def speed(self) -> float:
+        return vector.magnitude(self.velocity)
 
     @property
     def thumb(self) -> Finger:
@@ -262,8 +270,8 @@ Hand.DEFAULT = Hand(
 
 class Detector:
     def __init__(self):
-        self._hands = Channel[Tuple[Image, int]](), Channel[Tuple[Hand, ...]]()
-        self._poses = Channel[Tuple[Image, int]](), Channel[List[Landmarks]]()
+        self._hands = Channel[Tuple[Image, int]](), Channel[Sequence[Hand]]()
+        self._poses = Channel[Tuple[Image, int]](), Channel[Sequence[Landmarks]]()
         self._threads = (
             Thread(target=catch(_hands_actor, Closed, ()), args=self._hands),
             Thread(target=catch(_poses_actor, Closed, ()), args=self._poses),
@@ -282,7 +290,7 @@ class Detector:
 
     def detect(
         self, frame: MatLike, time: int
-    ) -> Tuple[Tuple[Hand, ...], List[Landmarks]]:
+    ) -> Tuple[Sequence[Hand], Sequence[Landmarks]]:
         image = Image(ImageFormat.SRGB, cvtColor(frame, COLOR_BGR2RGB))
         self._hands[0].put((image, time))
         self._poses[0].put((image, time))
@@ -291,8 +299,8 @@ class Detector:
     def draw(
         self,
         frame: MatLike,
-        hands: Tuple[Hand, ...],
-        poses: List[Landmarks],
+        hands: Sequence[Hand],
+        poses: Sequence[Landmarks],
     ) -> MatLike:
         frame = _draw_landmarks(
             frame,
@@ -340,7 +348,7 @@ class Detector:
         return model
 
 
-def _hands_actor(receive: Channel[Tuple[Image, int]], send: Channel[Tuple[Hand, ...]]):
+def _hands_actor(receive: Channel[Tuple[Image, int]], send: Channel[Sequence[Hand]]):
     def load() -> GestureRecognizer:
         return GestureRecognizer.create_from_options(
             GestureRecognizerOptions(
@@ -355,7 +363,7 @@ def _hands_actor(receive: Channel[Tuple[Image, int]], send: Channel[Tuple[Hand, 
             )
         )
 
-    _hands: Tuple[Hand, ...] = ()
+    _hands: Sequence[Hand] = ()
     with load() as model:
         while True:
             image, time = receive.get()
@@ -376,7 +384,9 @@ def _hands_actor(receive: Channel[Tuple[Image, int]], send: Channel[Tuple[Hand, 
             send.put(_hands)
 
 
-def _poses_actor(receive: Queue, send: Queue):
+def _poses_actor(
+    receive: Channel[Tuple[Image, int]], send: Channel[Sequence[Landmarks]]
+):
     def load() -> PoseLandmarker:
         return PoseLandmarker.create_from_options(
             PoseLandmarkerOptions(
@@ -394,15 +404,16 @@ def _poses_actor(receive: Queue, send: Queue):
         while True:
             message = receive.get()
             if message is None:
+
                 break
 
             image, time = message
             poses = model.detect_for_video(image, time)
             send.put(
-                [
+                tuple(
                     [(landmark.x, landmark.y) for landmark in pose]
                     for pose in poses.pose_landmarks
-                ]
+                )
             )
 
 

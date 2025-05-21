@@ -1,29 +1,7 @@
-from typing import Iterable
-from audio import Audio, Notes, Sound
+from audio import Audio
 from camera import Camera
-from detect import Detector, Gesture, Hand
-from utility import clamp, cut
+from detect import Detector
 from window import Window
-
-
-def _sounds(hands: Iterable[Hand], mute: bool) -> Iterable[Sound]:
-    volume = 0.0 if mute else 1.0
-    for hand in hands:
-        love = hand.gesture == Gesture.ILOVEYOU
-        floor = 0 if love else 0.025
-        triangle = any(hand.triangle(other) for other in hands)
-        for index, finger in enumerate(hand.fingers):
-            speed = cut(finger.tip.speed, floor)
-            yield Sound(
-                frequency=clamp(1 - finger.tip.y) * 1000.0 * (index % 5 + 1) + 50.0,
-                amplitude=clamp(speed * 10.0 * volume),
-                pan=clamp(finger.tip.x),
-                notes=(Notes.SECRET if triangle else Notes.NATURAL),
-                sequence=triangle,
-                advance=speed,
-                glide=0.25 if love else 0.025,
-            )
-
 
 with Audio() as audio, Camera() as camera, Window() as window, Detector() as detector:
     success = True
@@ -48,8 +26,7 @@ with Audio() as audio, Camera() as camera, Window() as window, Detector() as det
             elif key in (ord("q"), 27):
                 break
 
-        volume = 0.0 if mute else 1.0
-        audio.send(_sounds(hands, mute), reset)
+        audio.send(hands, mute, reset)
 
 
 # ONNX:

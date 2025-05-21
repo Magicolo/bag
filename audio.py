@@ -4,11 +4,15 @@ from math import sqrt
 from pathlib import Path
 from runpy import run_path
 from threading import Thread
-from typing import Callable, ClassVar, Iterable, List, Optional, Sequence, Tuple
+from typing import Callable, ClassVar, Iterable, List, Optional, Sequence, Set, Tuple
 
 from pyo import SPan, Server, PyoObject, Sine, SigTo, Compress, Freeverb, midiToHz, hzToMidi, pa_get_output_devices  # type: ignore
 from channel import Channel, Closed
-from utility import catch, clamp, debug
+from detect import Gesture, Hand
+from utility import catch, clamp, cut
+import vector
+
+_PAD = (-1000, -1000, -1000, -1000, -1000)
 
 
 class Notes(Tuple[int], Enum):
@@ -16,9 +20,10 @@ class Notes(Tuple[int], Enum):
     NATURAL = (0, 0, 2, 3, 3, 5, 5, 7, 8, 8, 10, 10)
     HARMONIC = (0, 0, 2, 3, 3, 5, 5, 7, 8, 8, 8, 11)
     MELODIC = (0, 0, 2, 3, 3, 5, 5, 7, 7, 9, 9, 11)
-    SECRET = (19, 18, 15, 9, 8, 16, 20, 24)
+    SECRET = (*_PAD, 19, 18, 15, 9, 8, 16, 20, 24, *_PAD)
 
 
+# TODO: Require some gesture to start the interaction?
 # TODO: Create an evaluation loop to tweak the instruments. Use Python's eval and an 'instruments' folder.
 # TODO: Finger that touch must charge a note.
 # TODO: Convert kick/punch impacts in cymbal/percussion-like sounds.
@@ -48,16 +53,13 @@ class Sound:
     frequency: float
     amplitude: float
     pan: float
-    notes: Notes
-    sequence: bool
-    advance: float
+    notes: Sequence[int]
     glide: float
 
 
 class Instrument:
 
     def __init__(self, factory: Factory):
-        self._progress = 0.0
         self._factory = factory
         self._frequency = SigTo(0.0)
         self._amplitude = SigTo(0.0)
@@ -88,12 +90,11 @@ class Instrument:
     def shift(self, frequency: float):
         self._frequency.value = frequency
 
-    def advance(self, by: float) -> float:
-        self._progress += by
-        return self._progress
+    def glide(self, glide: float):
+        self._frequency.time = glide
 
 
-_Message = Tuple[Sequence[Sound], bool]
+_Message = Tuple[Sequence[Hand], bool, bool]
 
 
 class Audio:
@@ -109,8 +110,61 @@ class Audio:
         self._channel.close()
         self._thread.join()
 
-    def send(self, sounds: Iterable[Sound], reset: bool = False):
-        self._channel.put((tuple(sounds), reset))
+    def send(self, hands: Sequence[Hand], mute: bool, reset: bool):
+        self._channel.put((hands, mute, reset))
+
+
+def _sound(
+    x: float,
+    y: float,
+    speed: float,
+    index: int,
+    glide: bool,
+    notes: Sequence[int],
+) -> Sound:
+    return Sound(
+        frequency=clamp(1 - y) * 1000.0 * (index % 5 + 1) + 50.0,
+        amplitude=clamp(cut(speed, 0 if glide else 0.025) * 10.0),
+        pan=clamp(x),
+        notes=notes,
+        glide=0.25 if glide else 0.025,
+    )
+
+
+def _secret(hand: Hand, hands: Sequence[Hand], skip: Set[Hand]) -> Optional[Sound]:
+    for other in hands:
+        if other in skip:
+            continue
+        elif hand.triangle(other):
+            skip.add(hand)
+            skip.add(other)
+            position = vector.mean(hand.position, other.position)
+            speed = hand.speed + other.speed / 2.0
+            index = int((hand.x + other.x / 2.0) * len(Notes.SECRET))
+            note = Notes.SECRET[index % len(Notes.SECRET)]
+            return _sound(position[0], position[1], speed, 0, False, (note,))
+
+
+def _sounds(hands: Sequence[Hand]) -> Iterable[Sound]:
+    skip = set()
+    for hand in hands:
+        if hand in skip:
+            continue
+
+        secret = _secret(hand, hands, skip)
+        if secret:
+            yield secret
+            continue
+
+        for index, finger in enumerate(hand.fingers):
+            yield _sound(
+                finger.tip.x,
+                finger.tip.y,
+                finger.tip.speed,
+                index,
+                hand.gesture == Gesture.ILOVEYOU,
+                Notes.NATURAL,
+            )
 
 
 def _actor(channel: Channel[_Message]):
@@ -134,35 +188,33 @@ def _actor(channel: Channel[_Message]):
         _server.setInOutDevice(_device())
         _server.boot().start()
         while True:
-            sounds, reset = channel.get()
+            hands, mute, reset = channel.get()
 
             if reset:
                 _factories = tuple(factories())
                 for instrument in _instruments:
                     instrument.stop()
                 _instruments.clear()
+            elif mute:
+                for instrument in _instruments:
+                    instrument.fade(0)
+            else:
+                sounds = tuple(_sounds(hands))
+                while len(_instruments) < len(sounds):
+                    index = len(_instruments)
+                    factory = _factories[(index // 5) % len(_factories)]
+                    _instruments.append(Instrument(factory))
 
-            while len(_instruments) < len(sounds):
-                index = len(_instruments)
-                factory = _factories[(index // 5) % len(_factories)]
-                _instruments.append(Instrument(factory))
+                attenuate = sqrt(clamp(1 / (len(sounds) + 1))) / 100
+                for instrument, sound in zip(_instruments, sounds):
+                    frequency = _note(sound.frequency, sound.notes)
+                    instrument.glide(sound.glide)
+                    instrument.shift(frequency)
+                    instrument.pan(sound.pan)
+                    instrument.fade(sound.amplitude * attenuate)
 
-            attenuate = sqrt(clamp(1 / (len(sounds) + 1))) / 100
-            for index, (instrument, sound) in enumerate(zip(_instruments, sounds)):
-                index = debug(int(instrument.advance(sound.advance)))
-                notes = (
-                    (sound.notes[index % len(sound.notes)],)
-                    if sound.sequence
-                    else sound.notes
-                )
-                frequency = _note(sound.frequency, notes)
-                instrument._frequency.time = sound.glide
-                instrument.shift(frequency)
-                instrument.pan(sound.pan or 0.5)
-                instrument.fade(sound.amplitude * attenuate)
-
-            for instrument in _instruments[len(sounds) :]:
-                instrument.fade(0)
+                for instrument in _instruments[len(sounds) :]:
+                    instrument.fade(0)
     finally:
         _server.stop()
 
@@ -173,7 +225,7 @@ def _device() -> Optional[int]:
             return index
 
 
-def _note(frequency: float, scale: Tuple[int, ...]) -> float:
+def _note(frequency: float, scale: Sequence[int]) -> float:
     frequency = max(frequency, 1)
     midi = int(hzToMidi(frequency))
     degree = midi % len(scale)

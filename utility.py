@@ -1,7 +1,6 @@
-from typing import Tuple, Type, TypeVar
+from typing import Type, TypeVar
 
 _T = TypeVar("_T")
-Vector = Tuple[float, float, float]
 
 
 def debug(value: _T) -> _T:
