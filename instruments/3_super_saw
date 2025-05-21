@@ -1,0 +1,5 @@
+from pyo import PyoObject, SuperSaw
+
+
+def new(frequency: PyoObject, amplitude: PyoObject) -> PyoObject:
+    return SuperSaw(freq=frequency / 8, mul=amplitude)  # type: ignore

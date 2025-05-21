@@ -1,17 +1,16 @@
 from dataclasses import dataclass
 from enum import Enum
 from functools import cached_property
-from math import acos, degrees
-from posixpath import dirname, join
+from pathlib import Path
 from queue import Queue
 from threading import Thread
 from typing import ClassVar, Iterable, List, Literal, Tuple, Union
-from mediapipe.tasks.python.components.containers.category import Category
 from mediapipe.tasks.python.components.containers.landmark import NormalizedLandmark
 from cv2 import COLOR_BGR2RGB, circle, cvtColor, line
 from cv2.typing import MatLike, Scalar
 from mediapipe import Image, ImageFormat
 from mediapipe.tasks.python.core.base_options import BaseOptions
+from mediapipe.tasks.python.components.containers.category import Category
 from mediapipe.tasks.python.vision.core.vision_task_running_mode import (
     VisionTaskRunningMode,
 )
@@ -31,7 +30,8 @@ from mediapipe.tasks.python.vision.pose_landmarker import (
 from ultralytics import YOLO
 
 from channel import Channel, Closed
-from utility import catch, distance, dot, magnitude, subtract
+from utility import catch
+import vector
 
 Landmarks = List[Tuple[float, float]]
 
@@ -90,7 +90,7 @@ class Landmark:
 
     @property
     def speed(self) -> float:
-        return magnitude(self.velocity)
+        return vector.magnitude(self.velocity)
 
     def updated(self, landmark: NormalizedLandmark) -> "Landmark":
         x, y, z = landmark.x or 0.0, landmark.y or 0.0, landmark.z or 0.0
@@ -117,21 +117,32 @@ class Finger:
     base: Landmark
 
     @property
+    def x(self) -> float:
+        return self.position[0]
+
+    @property
+    def y(self) -> float:
+        return self.position[1]
+
+    @property
+    def z(self) -> float:
+        return self.position[2]
+
+    @cached_property
+    def position(self) -> Tuple[float, float, float]:
+        return vector.mean(self.tip.position, self.dip.position, self.base.position)
+
+    @cached_property
+    def velocity(self) -> Tuple[float, float, float]:
+        return vector.mean(self.tip.velocity, self.dip.velocity, self.base.velocity)
+
+    @cached_property
     def angle(self) -> float:
-        v1 = subtract(self.base.position, self.dip.position)
-        v2 = subtract(self.tip.position, self.dip.position)
-        d = dot(v1, v2)
-        m1 = magnitude(v1)
-        m2 = magnitude(v2)
-        if m1 == 0 or m2 == 0:
-            return 0.0
-        else:
-            cos = max(-1.0, min(1.0, d / (m1 * m2)))
-            return degrees(acos(cos))
+        return vector.angle(self.tip.position, self.dip.position, self.base.position)
 
     def touches(self, finger: "Finger") -> bool:
-        reference = distance(self.tip.position, self.dip.position)
-        return distance(self.tip.position, finger.tip.position) < reference
+        reference = vector.distance(self.tip.position, self.dip.position)
+        return vector.distance(self.tip.position, finger.tip.position) < reference
 
 
 @dataclass(frozen=True)
@@ -142,6 +153,26 @@ class Hand:
     handedness: Handedness
     gesture: Gesture
     frames: int
+
+    @property
+    def x(self) -> float:
+        return self.position[0]
+
+    @property
+    def y(self) -> float:
+        return self.position[1]
+
+    @property
+    def z(self) -> float:
+        return self.position[2]
+
+    @cached_property
+    def position(self) -> Tuple[float, float, float]:
+        return vector.mean(*(landmark.position for landmark in self.landmarks))
+
+    @cached_property
+    def velocity(self) -> Tuple[float, float, float]:
+        return vector.mean(*(landmark.position for landmark in self.landmarks))
 
     @property
     def thumb(self) -> Finger:
@@ -155,7 +186,7 @@ class Hand:
     def index(self) -> Finger:
         return Finger(
             tip=self.landmarks[HandLandmark.INDEX_FINGER_TIP],
-            dip=self.landmarks[HandLandmark.INDEX_FINGER_PIP],
+            dip=self.landmarks[HandLandmark.INDEX_FINGER_DIP],
             base=self.landmarks[HandLandmark.INDEX_FINGER_MCP],
         )
 
@@ -163,7 +194,7 @@ class Hand:
     def middle(self) -> Finger:
         return Finger(
             tip=self.landmarks[HandLandmark.MIDDLE_FINGER_TIP],
-            dip=self.landmarks[HandLandmark.MIDDLE_FINGER_PIP],
+            dip=self.landmarks[HandLandmark.MIDDLE_FINGER_DIP],
             base=self.landmarks[HandLandmark.MIDDLE_FINGER_MCP],
         )
 
@@ -171,7 +202,7 @@ class Hand:
     def ring(self) -> Finger:
         return Finger(
             tip=self.landmarks[HandLandmark.RING_FINGER_TIP],
-            dip=self.landmarks[HandLandmark.RING_FINGER_PIP],
+            dip=self.landmarks[HandLandmark.RING_FINGER_DIP],
             base=self.landmarks[HandLandmark.RING_FINGER_MCP],
         )
 
@@ -179,7 +210,7 @@ class Hand:
     def pinky(self) -> Finger:
         return Finger(
             tip=self.landmarks[HandLandmark.PINKY_TIP],
-            dip=self.landmarks[HandLandmark.PINKY_PIP],
+            dip=self.landmarks[HandLandmark.PINKY_DIP],
             base=self.landmarks[HandLandmark.PINKY_MCP],
         )
 
@@ -188,28 +219,21 @@ class Hand:
         return self.thumb, self.index, self.middle, self.ring, self.pinky
 
     @property
-    def finger_tips(self) -> Tuple[Landmark, ...]:
-        return (
-            self.landmarks[HandLandmark.THUMB_TIP],
-            self.landmarks[HandLandmark.INDEX_FINGER_TIP],
-            self.landmarks[HandLandmark.MIDDLE_FINGER_TIP],
-            self.landmarks[HandLandmark.RING_FINGER_TIP],
-            self.landmarks[HandLandmark.PINKY_TIP],
-        )
-
-    @property
-    def finger_bases(self) -> Tuple[Landmark, ...]:
-        return (
-            self.landmarks[HandLandmark.THUMB_MCP],
-            self.landmarks[HandLandmark.INDEX_FINGER_MCP],
-            self.landmarks[HandLandmark.MIDDLE_FINGER_MCP],
-            self.landmarks[HandLandmark.RING_FINGER_MCP],
-            self.landmarks[HandLandmark.PINKY_MCP],
-        )
-
-    @property
     def wrist(self) -> Landmark:
         return self.landmarks[HandLandmark.WRIST]
+
+    def triangle(self, hand: "Hand") -> bool:
+        if self == hand or self.handedness == hand.handedness:
+            return False
+        else:
+            return (
+                self.thumb.touches(hand.thumb)
+                and self.index.touches(hand.index)
+                and not self.thumb.touches(self.index)
+                and not self.thumb.touches(hand.index)
+                and not self.index.touches(self.thumb)
+                and not self.index.touches(hand.thumb)
+            )
 
     def updated(
         self,
@@ -272,22 +296,34 @@ class Detector:
     ) -> MatLike:
         frame = _draw_landmarks(
             frame,
-            (0, 255, 0),
             (
-                [(landmark.x, landmark.y) for landmark in hand.landmarks]
+                [(landmark.x, landmark.y, (0, 255, 0)) for landmark in hand.landmarks]
                 for hand in hands
             ),
             (
-                (connection.start, connection.end)
+                (connection.start, connection.end, (0, 255, 0))
                 for connection in HandLandmarksConnections.HAND_CONNECTIONS
             ),
         )
         frame = _draw_landmarks(
+            frame, ([(hand.x, hand.y, (255, 0, 0))] for hand in hands), []
+        )
+        frame = _draw_landmarks(
             frame,
-            (0, 0, 255),
-            poses,
             (
-                (connection.start, connection.end)
+                [(finger.x, finger.y, (255, 0, 0)) for finger in hand.fingers]
+                for hand in hands
+            ),
+            [],
+        )
+        frame = _draw_landmarks(
+            frame,
+            (
+                [(landmark[0], landmark[1], (0, 0, 255)) for landmark in pose]
+                for pose in poses
+            ),
+            (
+                (connection.start, connection.end, (0, 0, 255))
                 for connection in PoseLandmarksConnections.POSE_LANDMARKS
             ),
         )
@@ -378,16 +414,17 @@ def _predict_yolo_pose(model: YOLO, frame: MatLike) -> Iterable[Landmarks]:
 
 
 @staticmethod
-def _model_path(folder: Union[Literal["mediapipe"], Literal["yolo"]], name: str) -> str:
-    return join(dirname(__file__), "models", folder, name)
+def _model_path(
+    folder: Union[Literal["mediapipe"], Literal["yolo"]], name: str
+) -> Path:
+    return Path(__file__).parent.joinpath("models", folder, name)
 
 
 @staticmethod
 def _draw_landmarks(
     frame: MatLike,
-    color: Scalar,
-    landmarks: Iterable[Landmarks],
-    connections: Iterable[Tuple[int, int]],
+    landmarks: Iterable[List[Tuple[float, float, Scalar]]],
+    connections: Iterable[Tuple[int, int, Scalar]],
 ):
     height, width, _ = frame.shape
     for group in landmarks:
@@ -396,7 +433,7 @@ def _draw_landmarks(
                 frame,
                 (int(landmark[0] * width), int(landmark[1] * height)),
                 5,
-                color,
+                landmark[2],
                 -1,
             )
         for connection in connections:
@@ -406,7 +443,7 @@ def _draw_landmarks(
                 frame,
                 (int(start[0] * width), int(start[1] * height)),
                 (int(end[0] * width), int(end[1] * height)),
-                color,
+                connection[2],
                 2,
             )
     return frame
