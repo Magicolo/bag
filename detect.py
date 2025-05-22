@@ -5,7 +5,7 @@ from pathlib import Path
 from threading import Thread
 from typing import ClassVar, Iterable, List, Literal, Sequence, Tuple, Union
 from mediapipe.tasks.python.components.containers.landmark import NormalizedLandmark
-from cv2 import COLOR_BGR2RGB, circle, cvtColor, line
+from cv2 import COLOR_BGR2RGB, circle, cvtColor, line, rectangle
 from cv2.typing import MatLike, Scalar
 from mediapipe import Image, ImageFormat
 from mediapipe.tasks.python.core.base_options import BaseOptions
@@ -144,6 +144,14 @@ class Finger:
     def angle(self) -> float:
         return vector.angle(self.tip.position, self.dip.position, self.base.position)
 
+    @cached_property
+    def minimum(self) -> Vector:
+        return vector.minimum(self.tip.position, self.dip.position, self.base.position)
+
+    @cached_property
+    def maximum(self) -> Vector:
+        return vector.maximum(self.tip.position, self.dip.position, self.base.position)
+
     def touches(self, finger: "Finger") -> bool:
         reference = vector.distance(self.tip.position, self.dip.position)
         return vector.distance(self.tip.position, finger.tip.position) < reference
@@ -181,6 +189,14 @@ class Hand:
     @cached_property
     def speed(self) -> float:
         return vector.magnitude(self.velocity)
+
+    @cached_property
+    def minimum(self) -> Vector:
+        return vector.minimum(*(landmark.position for landmark in self.landmarks))
+
+    @cached_property
+    def maximum(self) -> Vector:
+        return vector.maximum(*(landmark.position for landmark in self.landmarks))
 
     @property
     def thumb(self) -> Finger:
@@ -302,6 +318,17 @@ class Detector:
         hands: Sequence[Hand],
         poses: Sequence[Landmarks],
     ) -> MatLike:
+        height, width, _ = frame.shape
+        for hand in hands:
+            low, high = vector.scale(hand.minimum, hand.maximum, 1.25)
+            frame = rectangle(
+                frame,
+                (int(low[0] * width), int(low[1] * height)),
+                (int(high[0] * width), int(high[1] * height)),
+                (127, 127, 0),
+                1,
+            )
+
         frame = _draw_landmarks(
             frame,
             (
@@ -417,13 +444,6 @@ def _poses_actor(
             )
 
 
-def _predict_yolo_pose(model: YOLO, frame: MatLike) -> Iterable[Landmarks]:
-    for results in model.predict(frame, stream=True):
-        if results.keypoints:
-            for pose in results.keypoints.xyn:
-                yield pose.tolist()
-
-
 @staticmethod
 def _model_path(
     folder: Union[Literal["mediapipe"], Literal["yolo"]], name: str
@@ -458,3 +478,72 @@ def _draw_landmarks(
                 2,
             )
     return frame
+
+
+# def _predict_yolo_pose(model: YOLO, frame: MatLike) -> Iterable[Landmarks]:
+#     for results in model.predict(frame, stream=True):
+#         if results.keypoints:
+#             for pose in results.keypoints.xyn:
+#                 yield pose.tolist()
+
+
+# def _gesture_actor(
+#     receive: Channel[Tuple[MatLike, Sequence[Hand]]], send: Channel[Sequence[str]]
+# ):
+#     while True:
+#         frame, hands = receive.get()
+#         height, width, _ = frame.shape
+#         for hand in hands:
+#             low, high = vector.scale(hand.minimum, hand.maximum, 1.25)
+#             low, high = vector.clamp(low), vector.clamp(high)
+#             section = frame[
+#                 int(low[1] * height) : int(high[1] * height),
+#                 int(low[0] * width) : int(high[0] * width),
+#             ]
+#             _, jpg = imencode(".jpg", section)
+#             bytes, _ = base64_encode(jpg)
+#             ascii = bytes.decode("ascii")
+#             # Make an http call to ollama.
+#             response = requests.post(
+#                 "http://localhost:11434/api/generate",
+#                 json={
+#                     "model": "moondream",
+#                     "prompt": "You are an expert american sign language translator. Translate the hand sign in the image to a letter from the alphabet. When unsure, output '?'.",
+#                     "images": [ascii],
+#                     "stream": False,
+#                     "format": {
+#                         "type": "string",
+#                         "enum": [
+#                             "?",
+#                             "A",
+#                             "B",
+#                             "C",
+#                             "D",
+#                             "E",
+#                             "F",
+#                             "G",
+#                             "H",
+#                             "I",
+#                             "J",
+#                             "K",
+#                             "L",
+#                             "M",
+#                             "N",
+#                             "O",
+#                             "P",
+#                             "Q",
+#                             "R",
+#                             "S",
+#                             "T",
+#                             "U",
+#                             "V",
+#                             "W",
+#                             "X",
+#                             "Y",
+#                             "Z",
+#                         ],
+#                     },
+#                 },
+#             )
+#             content = dict(response.json())
+#             debug(str(content["response"]))

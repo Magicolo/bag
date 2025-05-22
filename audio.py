@@ -44,7 +44,7 @@ class Factory:
 Factory.DEFAULT = Factory(
     new=lambda frequency: Sine(freq=frequency),  # type: ignore
     name="default",
-    stamp=0,
+    stamp=0.0,
 )
 
 
@@ -205,7 +205,7 @@ def _actor(channel: Channel[_Message]):
                     factory = _factories[(index // 5) % len(_factories)]
                     _instruments.append(Instrument(factory))
 
-                attenuate = sqrt(clamp(1 / (len(sounds) + 1))) / 100
+                attenuate = sqrt(clamp(1 / (len(sounds) + 1))) / 10
                 for instrument, sound in zip(_instruments, sounds):
                     frequency = _note(sound.frequency, sound.notes)
                     instrument.glide(sound.glide)
