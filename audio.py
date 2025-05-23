@@ -118,13 +118,16 @@ def _sound(
     x: float,
     y: float,
     speed: float,
+    scale: float,
     index: int,
     glide: bool,
     notes: Sequence[int],
 ) -> Sound:
+    floor = 0.0 if scale <= 0.0 else scale / 10.0
+    range = 1000.0 if scale <= 0.0 else 50.0 / scale
     return Sound(
-        frequency=clamp(1 - y) * 1000.0 * (index % 5 + 1) + 50.0,
-        amplitude=clamp(speed * 100.0),
+        frequency=clamp(1 - y) * range * (index % 5 + 1) + 50.0,
+        amplitude=clamp(cut(speed, floor) * 100.0),
         pan=clamp(x),
         notes=notes,
         glide=0.25 if glide else 0.025,
@@ -142,7 +145,7 @@ def _secret(hand: Hand, hands: Sequence[Hand], skip: Set[Hand]) -> Optional[Soun
             speed = hand.speed + other.speed / 2.0
             index = int((hand.x + other.x / 2.0) * len(Notes.SECRET))
             note = Notes.SECRET[index % len(Notes.SECRET)]
-            return _sound(position[0], position[1], speed, 0, False, (note,))
+            return _sound(position[0], position[1], speed, 0.0, 0, False, (note,))
 
 
 def _sounds(hands: Sequence[Hand]) -> Iterable[Sound]:
@@ -160,7 +163,8 @@ def _sounds(hands: Sequence[Hand]) -> Iterable[Sound]:
             yield _sound(
                 finger.tip.x,
                 finger.tip.y,
-                cut(finger.tip.speed, finger.length / 10.0),
+                finger.tip.speed,
+                finger.length,
                 index,
                 hand.gesture == Gesture.ILOVEYOU,
                 Notes.NATURAL,
