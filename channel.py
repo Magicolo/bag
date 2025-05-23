@@ -1,5 +1,5 @@
 from threading import Condition, Lock
-from typing import Generic, Tuple
+from typing import Generic, Sequence
 from typing import Any, Optional, TypeVar
 
 _T = TypeVar("_T")
@@ -78,7 +78,7 @@ class Broadcast(Generic[_T]):
         self.close()
 
     @property
-    def channels(self) -> Tuple[Channel[_T], ...]:
+    def channels(self) -> Sequence[Channel[_T]]:
         return self._channels
 
     def close(self):

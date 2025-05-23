@@ -6,10 +6,10 @@ from runpy import run_path
 from threading import Thread
 from typing import Callable, ClassVar, Iterable, List, Optional, Sequence, Set, Tuple
 
-from pyo import SPan, Server, PyoObject, Sine, SigTo, Compress, Freeverb, midiToHz, hzToMidi, pa_get_output_devices  # type: ignore
+from pyo import Server, PyoObject, Sine, Pan, SigTo, midiToHz, hzToMidi, pa_get_output_devices  # type: ignore
 from channel import Channel, Closed
 from detect import Gesture, Hand
-from utility import catch, clamp, cut
+from utility import catch, clamp, cut, debug
 import vector
 
 _PAD = (-1000, -1000, -1000, -1000, -1000)
@@ -58,25 +58,25 @@ class Sound:
 
 
 class Instrument:
-
     def __init__(self, factory: Factory):
         self._factory = factory
         self._frequency = SigTo(0.0)
         self._amplitude = SigTo(0.0)
         self._pan = SigTo(0.5)
         self._base = self._factory.new(self._frequency, self._amplitude)
-        self._synthesizer = Freeverb(
-            Compress(
-                SPan(self._base, pan=self._pan),  # type: ignore
-                risetime=0.001,  # type: ignore
-                knee=1.0,  # type: ignore
-                lookahead=0.0,  # type: ignore
-                thresh=-6.0,  # type: ignore
-                ratio=10.0,  # type: ignore
-            ),
-            size=0.9,
-            bal=0.1,
-        ).out()
+        # self._synthesizer = Freeverb(
+        #     Compress(
+        #         Pan(self._base, outs=8, pan=self._pan),  # type: ignore
+        #         risetime=0.001,  # type: ignore
+        #         knee=1.0,  # type: ignore
+        #         lookahead=0.0,  # type: ignore
+        #         thresh=-6.0,  # type: ignore
+        #         ratio=10.0,  # type: ignore
+        #     ),
+        #     size=0.9,
+        #     bal=0.1,
+        # ).out()
+        self._synthesizer = Pan(self._base, outs=8, pan=self._pan).out()  # type: ignore
 
     def stop(self):
         self._synthesizer.stop()
@@ -124,7 +124,7 @@ def _sound(
 ) -> Sound:
     return Sound(
         frequency=clamp(1 - y) * 1000.0 * (index % 5 + 1) + 50.0,
-        amplitude=clamp(cut(speed, 0 if glide else 0.025) * 10.0),
+        amplitude=clamp(speed * 100.0),
         pan=clamp(x),
         notes=notes,
         glide=0.25 if glide else 0.025,
@@ -148,7 +148,7 @@ def _secret(hand: Hand, hands: Sequence[Hand], skip: Set[Hand]) -> Optional[Soun
 def _sounds(hands: Sequence[Hand]) -> Iterable[Sound]:
     skip = set()
     for hand in hands:
-        if hand in skip:
+        if hand in skip or hand.frames < 2:
             continue
 
         secret = _secret(hand, hands, skip)
@@ -160,7 +160,7 @@ def _sounds(hands: Sequence[Hand]) -> Iterable[Sound]:
             yield _sound(
                 finger.tip.x,
                 finger.tip.y,
-                finger.tip.speed,
+                cut(finger.tip.speed, finger.length / 10.0),
                 index,
                 hand.gesture == Gesture.ILOVEYOU,
                 Notes.NATURAL,
@@ -180,7 +180,7 @@ def _actor(channel: Channel[_Message]):
                 if new:
                     yield Factory(new=new, name=name, stamp=stamp)
 
-    _server = Server(duplex=0, nchnls=2)
+    _server = Server(audio="pulse", sr=48000, duplex=0, ichnls=0, nchnls=8)
     _instruments: List[Instrument] = []
     _factories = tuple(factories())
 
@@ -205,7 +205,7 @@ def _actor(channel: Channel[_Message]):
                     factory = _factories[(index // 5) % len(_factories)]
                     _instruments.append(Instrument(factory))
 
-                attenuate = sqrt(clamp(1 / (len(sounds) + 1))) / 10
+                attenuate = sqrt(clamp(1 / (len(sounds) + 1))) / 100
                 for instrument, sound in zip(_instruments, sounds):
                     frequency = _note(sound.frequency, sound.notes)
                     instrument.glide(sound.glide)
@@ -220,9 +220,14 @@ def _actor(channel: Channel[_Message]):
 
 
 def _device() -> Optional[int]:
-    for name, index in zip(*pa_get_output_devices()):
+    devices = debug(pa_get_output_devices(), "=> Available Audio Devices: ")
+    for name, index in zip(*devices):
+        if "usb audio" in name.lower():
+            return debug(index, f"=> Using Audio Device: {name}[", "]")
+
+    for name, index in zip(*devices):
         if "analog" in name.lower():
-            return index
+            return debug(index, f"=> Using Audio Device: {name}[", "]")
 
 
 def _note(frequency: float, scale: Sequence[int]) -> float:

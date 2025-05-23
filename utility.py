@@ -3,8 +3,8 @@ from typing import Type, TypeVar
 _T = TypeVar("_T")
 
 
-def debug(value: _T) -> _T:
-    print(value)
+def debug(value: _T, pre: str = "", post: str = "", wrap: str = "") -> _T:
+    print(f"{wrap}{pre}{value}{post}{wrap}")
     return value
 
 

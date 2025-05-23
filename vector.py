@@ -7,8 +7,13 @@ ONE = (1.0, 1.0, 1.0)
 INFINITY = (inf, inf, inf)
 
 
-def distance(source: Vector, target: Vector) -> float:
-    return magnitude(subtract(source, target))
+def distance(*vectors: Vector, square: bool = False) -> float:
+    last = None
+    distance = 0.0
+    for vector in vectors:
+        distance += magnitude(subtract(vector, last or vector), square)
+        last = vector
+    return distance
 
 
 def add(left: Vector, right: Vector) -> Vector:
@@ -35,8 +40,9 @@ def multiply(left: Vector, right: float) -> Vector:
     return left[0] * right, left[1] * right, left[2] * right
 
 
-def magnitude(vector: Vector) -> float:
-    return sqrt(vector[0] ** 2 + vector[1] ** 2 + vector[2] ** 2)
+def magnitude(vector: Vector, square: bool = False) -> float:
+    sum = vector[0] ** 2 + vector[1] ** 2 + vector[2] ** 2
+    return sum if sum == 0.0 or square else sqrt(sum)
 
 
 def normalize(vector: Vector) -> Vector:
@@ -82,6 +88,20 @@ def mean(*vectors: Vector) -> Vector:
         count += 1
         total = add(total, vector)
     return divide(total, count) if count > 1 else total
+
+
+def absolute(vector: Vector) -> Vector:
+    return abs(vector[0]), abs(vector[1]), abs(vector[2])
+
+
+def area(minimum: Vector, maximum: Vector) -> float:
+    x, y, _ = subtract(maximum, minimum)
+    return x * y
+
+
+def volume(minimum: Vector, maximum: Vector) -> float:
+    x, y, z = subtract(maximum, minimum)
+    return x * y * z
 
 
 def angle(

@@ -111,60 +111,8 @@ Landmark.DEFAULT = Landmark(
 
 
 @dataclass(frozen=True)
-class Finger:
-    tip: Landmark
-    dip: Landmark
-    base: Landmark
-
-    @property
-    def x(self) -> float:
-        return self.position[0]
-
-    @property
-    def y(self) -> float:
-        return self.position[1]
-
-    @property
-    def z(self) -> float:
-        return self.position[2]
-
-    @cached_property
-    def position(self) -> Vector:
-        return vector.mean(self.tip.position, self.dip.position, self.base.position)
-
-    @cached_property
-    def velocity(self) -> Vector:
-        return vector.mean(self.tip.velocity, self.dip.velocity, self.base.velocity)
-
-    @cached_property
-    def speed(self) -> float:
-        return vector.magnitude(self.velocity)
-
-    @cached_property
-    def angle(self) -> float:
-        return vector.angle(self.tip.position, self.dip.position, self.base.position)
-
-    @cached_property
-    def minimum(self) -> Vector:
-        return vector.minimum(self.tip.position, self.dip.position, self.base.position)
-
-    @cached_property
-    def maximum(self) -> Vector:
-        return vector.maximum(self.tip.position, self.dip.position, self.base.position)
-
-    def touches(self, finger: "Finger") -> bool:
-        reference = vector.distance(self.tip.position, self.dip.position)
-        return vector.distance(self.tip.position, finger.tip.position) < reference
-
-
-@dataclass(frozen=True)
-class Hand:
-    DEFAULT: ClassVar["Hand"]
-
-    landmarks: Tuple[Landmark, ...]
-    handedness: Handedness
-    gesture: Gesture
-    frames: int
+class Composite:
+    landmarks: Sequence[Landmark]
 
     @property
     def x(self) -> float:
@@ -184,11 +132,19 @@ class Hand:
 
     @cached_property
     def velocity(self) -> Vector:
-        return vector.mean(*(landmark.position for landmark in self.landmarks))
+        return vector.mean(*(landmark.velocity for landmark in self.landmarks))
 
     @cached_property
     def speed(self) -> float:
         return vector.magnitude(self.velocity)
+
+    @property
+    def area(self) -> float:
+        return vector.area(self.minimum, self.maximum)
+
+    @property
+    def volume(self) -> float:
+        return vector.volume(self.minimum, self.maximum)
 
     @cached_property
     def minimum(self) -> Vector:
@@ -198,48 +154,123 @@ class Hand:
     def maximum(self) -> Vector:
         return vector.maximum(*(landmark.position for landmark in self.landmarks))
 
+
+@dataclass(frozen=True)
+class Finger(Composite):
+    name: str
+
     @property
+    def tip(self) -> Landmark:
+        return self.landmarks[0]
+
+    @property
+    def dip(self) -> Landmark:
+        return self.landmarks[1]
+
+    @property
+    def pip(self) -> Landmark:
+        return self.landmarks[2]
+
+    @property
+    def base(self) -> Landmark:
+        return self.landmarks[3]
+
+    @cached_property
+    def length(self) -> float:
+        return vector.distance(*(landmark.position for landmark in self.landmarks))
+
+    @cached_property
+    def angle(self) -> float:
+        return vector.angle(self.tip.position, self.dip.position, self.base.position)
+
+    def touches(self, finger: "Finger") -> bool:
+        reference = vector.distance(self.tip.position, self.dip.position)
+        return vector.distance(self.tip.position, finger.tip.position) < reference
+
+
+@dataclass(frozen=True)
+class Hand(Composite):
+    DEFAULT: ClassVar["Hand"]
+
+    handedness: Handedness
+    gesture: Gesture
+    frames: int
+
+    @cached_property
+    def palm(self) -> Composite:
+        return Composite(
+            landmarks=(
+                self.landmarks[HandLandmark.WRIST],
+                self.landmarks[HandLandmark.THUMB_CMC],
+                self.landmarks[HandLandmark.INDEX_FINGER_MCP],
+                self.landmarks[HandLandmark.MIDDLE_FINGER_MCP],
+                self.landmarks[HandLandmark.RING_FINGER_MCP],
+                self.landmarks[HandLandmark.PINKY_MCP],
+            )
+        )
+
+    @cached_property
     def thumb(self) -> Finger:
         return Finger(
-            tip=self.landmarks[HandLandmark.THUMB_TIP],
-            dip=self.landmarks[HandLandmark.THUMB_IP],
-            base=self.landmarks[HandLandmark.THUMB_MCP],
+            name="thumb",
+            landmarks=(
+                self.landmarks[HandLandmark.THUMB_TIP],
+                self.landmarks[HandLandmark.THUMB_IP],
+                self.landmarks[HandLandmark.THUMB_MCP],
+                self.landmarks[HandLandmark.THUMB_CMC],
+            ),
         )
 
-    @property
+    @cached_property
     def index(self) -> Finger:
         return Finger(
-            tip=self.landmarks[HandLandmark.INDEX_FINGER_TIP],
-            dip=self.landmarks[HandLandmark.INDEX_FINGER_DIP],
-            base=self.landmarks[HandLandmark.INDEX_FINGER_MCP],
+            name="index",
+            landmarks=(
+                self.landmarks[HandLandmark.INDEX_FINGER_TIP],
+                self.landmarks[HandLandmark.INDEX_FINGER_DIP],
+                self.landmarks[HandLandmark.INDEX_FINGER_PIP],
+                self.landmarks[HandLandmark.INDEX_FINGER_MCP],
+            ),
         )
 
-    @property
+    @cached_property
     def middle(self) -> Finger:
         return Finger(
-            tip=self.landmarks[HandLandmark.MIDDLE_FINGER_TIP],
-            dip=self.landmarks[HandLandmark.MIDDLE_FINGER_DIP],
-            base=self.landmarks[HandLandmark.MIDDLE_FINGER_MCP],
+            name="middle",
+            landmarks=(
+                self.landmarks[HandLandmark.MIDDLE_FINGER_TIP],
+                self.landmarks[HandLandmark.MIDDLE_FINGER_DIP],
+                self.landmarks[HandLandmark.MIDDLE_FINGER_PIP],
+                self.landmarks[HandLandmark.MIDDLE_FINGER_MCP],
+            ),
         )
 
-    @property
+    @cached_property
     def ring(self) -> Finger:
         return Finger(
-            tip=self.landmarks[HandLandmark.RING_FINGER_TIP],
-            dip=self.landmarks[HandLandmark.RING_FINGER_DIP],
-            base=self.landmarks[HandLandmark.RING_FINGER_MCP],
+            name="ring",
+            landmarks=(
+                self.landmarks[HandLandmark.RING_FINGER_TIP],
+                self.landmarks[HandLandmark.RING_FINGER_DIP],
+                self.landmarks[HandLandmark.RING_FINGER_PIP],
+                self.landmarks[HandLandmark.RING_FINGER_MCP],
+            ),
         )
 
-    @property
+    @cached_property
     def pinky(self) -> Finger:
         return Finger(
-            tip=self.landmarks[HandLandmark.PINKY_TIP],
-            dip=self.landmarks[HandLandmark.PINKY_DIP],
-            base=self.landmarks[HandLandmark.PINKY_MCP],
+            name="pinky",
+            landmarks=(
+                self.landmarks[HandLandmark.PINKY_TIP],
+                self.landmarks[HandLandmark.PINKY_DIP],
+                self.landmarks[HandLandmark.PINKY_PIP],
+                self.landmarks[HandLandmark.PINKY_MCP],
+            ),
         )
 
     @property
-    def fingers(self) -> Tuple[Finger, ...]:
+    def fingers(self) -> Sequence[Finger]:
         return self.thumb, self.index, self.middle, self.ring, self.pinky
 
     @property
@@ -328,6 +359,15 @@ class Detector:
                 (127, 127, 0),
                 1,
             )
+            for finger in hand.fingers:
+                low, high = vector.scale(finger.minimum, finger.maximum, 1.25)
+                frame = rectangle(
+                    frame,
+                    (int(low[0] * width), int(low[1] * height)),
+                    (int(high[0] * width), int(high[1] * height)),
+                    (0, 127, 127),
+                    1,
+                )
 
         frame = _draw_landmarks(
             frame,

@@ -4,6 +4,7 @@
     "remoteUser": "ubuntu",
     "remoteEnv": {
         "COMPOSE_BAKE": "true",
+        "PULSE_SERVER": "unix:${localEnv:XDG_RUNTIME_DIR}/pulse/native",
         "DISPLAY": "${localEnv:DISPLAY}",
         "XAUTHORITY": "${localEnv:XAUTHORITY}",
         "XDG_RUNTIME_DIR": "${localEnv:XDG_RUNTIME_DIR}",
@@ -15,6 +16,7 @@
     },
     "containerEnv": {
         "COMPOSE_BAKE": "true",
+        "PULSE_SERVER": "unix:${localEnv:XDG_RUNTIME_DIR}/pulse/native",
         "DISPLAY": "${localEnv:DISPLAY}",
         "XAUTHORITY": "${localEnv:XAUTHORITY}",
         "XDG_RUNTIME_DIR": "${localEnv:XDG_RUNTIME_DIR}",
@@ -48,6 +50,11 @@
         {
             "source": "${localEnv:XDG_RUNTIME_DIR}",
             "target": "${localEnv:XDG_RUNTIME_DIR}",
+            "type": "bind"
+        },
+        {
+            "source": "/run/user/1000/pulse/native",
+            "target": "/run/pulse/native",
             "type": "bind"
         }
     ],
