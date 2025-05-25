@@ -3,7 +3,7 @@ FROM nvidia/cuda:12.8.0-cudnn-devel-ubuntu24.04
 # Setup general.
 RUN apt update && \
     apt upgrade --yes && \
-    apt install --no-install-recommends --yes \
+    apt install --no-install-recommends --allow-change-held-packages --yes \
     ca-certificates git git-lfs curl jq grep nano apt-utils dpkg gettext procps build-essential pkg-config software-properties-common htop \
     python3 python3-pip python3-dev python3-tk python-is-python3 \
     make cmake libssl-dev lldb llvm llvm-dev libclang-dev clang protobuf-compiler zlib1g swig \
