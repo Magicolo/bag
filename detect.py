@@ -5,7 +5,7 @@ from pathlib import Path
 from threading import Thread
 from typing import ClassVar, Iterable, List, Literal, Sequence, Tuple, Union
 from mediapipe.tasks.python.components.containers.landmark import NormalizedLandmark
-from cv2 import COLOR_BGR2RGB, circle, cvtColor, line, rectangle
+from cv2 import circle, line, rectangle
 from cv2.typing import MatLike, Scalar
 from mediapipe import Image, ImageFormat
 from mediapipe.tasks.python.core.base_options import BaseOptions
@@ -348,7 +348,7 @@ class Detector:
         self, frame: MatLike, time: int
     ) -> Tuple[Sequence[Hand], Sequence[Landmarks]]:
         with measure.block("Detect"):
-            image = Image(ImageFormat.SRGB, cvtColor(frame, COLOR_BGR2RGB))
+            image = Image(ImageFormat.SRGB, frame)
             self._hands[0].put((image, time))
             self._poses[0].put((image, time))
             return self._hands[1].get(), self._poses[1].get()

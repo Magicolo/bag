@@ -1,11 +1,15 @@
 from threading import Thread
 from typing import Iterable, Tuple
 
+
 from cv2 import (
+    CAP_PROP_AUTOFOCUS,
+    CAP_PROP_CONVERT_RGB,
     CAP_PROP_FPS,
     CAP_PROP_FRAME_HEIGHT,
     CAP_PROP_FRAME_WIDTH,
     CAP_PROP_POS_MSEC,
+    CAP_PROP_VIDEO_STREAM,
     VideoCapture,
     flip,
 )
@@ -36,18 +40,18 @@ class Camera:
 
 def _actor(channel: Channel[Tuple[MatLike, int]]):
     _camera = VideoCapture(0)
-
     try:
-        _camera.set(CAP_PROP_FRAME_WIDTH, 1)
-        _camera.set(CAP_PROP_FRAME_HEIGHT, 1)
+        _camera.set(CAP_PROP_FRAME_WIDTH, 340)
+        _camera.set(CAP_PROP_FRAME_HEIGHT, 240)
         _camera.set(CAP_PROP_FPS, 30)
+        _camera.set(CAP_PROP_CONVERT_RGB, 1)
+        _camera.set(CAP_PROP_AUTOFOCUS, 0)
+        _camera.set(CAP_PROP_VIDEO_STREAM, 1)
 
         for _ in measure.loop("Camera", _camera.isOpened):
-            with measure.block("Camera Read"):
-                success, frame = _camera.read()
+            success, frame = _camera.read()
             if success:
-                with measure.block("Camera Flip"):
-                    frame = flip(frame, 1, frame)
+                frame = flip(frame, 1, frame)
                 time = int(_camera.get(CAP_PROP_POS_MSEC))
                 channel.put((frame, time))
             else:
