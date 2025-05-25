@@ -12,6 +12,7 @@ from cv2 import (
 from cv2.typing import MatLike
 
 from channel import Channel, Closed
+import measure
 from utility import catch
 
 
@@ -41,10 +42,12 @@ def _actor(channel: Channel[Tuple[MatLike, int]]):
         _camera.set(CAP_PROP_FRAME_HEIGHT, 1)
         _camera.set(CAP_PROP_FPS, 30)
 
-        while _camera.isOpened():
-            success, frame = _camera.read()
+        for _ in measure.loop("Camera", _camera.isOpened):
+            with measure.block("Camera Read"):
+                success, frame = _camera.read()
             if success:
-                frame = flip(frame, 1, frame)
+                with measure.block("Camera Flip"):
+                    frame = flip(frame, 1, frame)
                 time = int(_camera.get(CAP_PROP_POS_MSEC))
                 channel.put((frame, time))
             else:

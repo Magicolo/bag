@@ -11,6 +11,8 @@ from cv2 import (
 )
 from cv2.typing import MatLike
 
+import measure
+
 
 class Window:
     def __init__(self, name="La Brousse À Gigante", width=640, height=480):
@@ -28,8 +30,9 @@ class Window:
         destroyWindow(self._name)
 
     def show(self, frame: MatLike) -> Tuple[int, bool]:
-        imshow(self._name, resize(frame, (self._width, self._height)))
-        key = pollKey()
-        change = key != self._last
-        self._last = key
-        return key, change
+        with measure.block("Window"):
+            imshow(self._name, resize(frame, (self._width, self._height)))
+            key = pollKey()
+            change = key != self._last
+            self._last = key
+            return key, change

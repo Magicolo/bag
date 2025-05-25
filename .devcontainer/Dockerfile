@@ -60,6 +60,4 @@ RUN REPOSITORY="cargo-bins/cargo-binstall" && \
     chmod --recursive 0777 "$CARGO_HOME"
 
 # Setup python.
-ENV LIBTORCH_USE_PYTORCH=1
-RUN pip install --break-system-packages --upgrade --index-url https://download.pytorch.org/whl/cu128 torch torchvision torchaudio && \
-    pip install --break-system-packages --upgrade ultralytics mediapipe pyo onnxruntime-gpu tensorflow[and-cuda] tf2onnx
+RUN pip install --break-system-packages --upgrade ultralytics mediapipe pyo

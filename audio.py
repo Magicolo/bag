@@ -9,6 +9,7 @@ from typing import Callable, ClassVar, Iterable, List, Optional, Sequence, Set, 
 from pyo import Server, PyoObject, Sine, Pan, SigTo, midiToHz, hzToMidi, pa_get_output_devices  # type: ignore
 from channel import Channel, Closed
 from detect import Gesture, Hand
+import measure
 from utility import catch, clamp, cut, debug
 import vector
 
@@ -76,7 +77,7 @@ class Instrument:
         #     size=0.9,
         #     bal=0.1,
         # ).out()
-        self._synthesizer = Pan(self._base, outs=8, pan=self._pan).out()  # type: ignore
+        self._synthesizer = Pan(self._base, outs=2, pan=self._pan).out()  # type: ignore
 
     def stop(self):
         self._synthesizer.stop()
@@ -184,54 +185,52 @@ def _actor(channel: Channel[_Message]):
                 if new:
                     yield Factory(new=new, name=name, stamp=stamp)
 
-    _server = Server(audio="pulse", sr=48000, duplex=0, ichnls=0, nchnls=8)
+    _server = Server(audio="pulse", sr=48000, duplex=0, ichnls=0, nchnls=2)
     _instruments: List[Instrument] = []
     _factories = tuple(factories())
 
     try:
-        _server.setInOutDevice(_device())
+        _server.setInOutDevice(_device("digital", "usb audio", "analog"))
         _server.boot().start()
         while True:
             hands, mute, reset = channel.get()
 
-            if reset:
-                _factories = tuple(factories())
-                for instrument in _instruments:
-                    instrument.stop()
-                _instruments.clear()
-            elif mute:
-                for instrument in _instruments:
-                    instrument.fade(0)
-            else:
-                sounds = tuple(_sounds(hands))
-                while len(_instruments) < len(sounds):
-                    index = len(_instruments)
-                    factory = _factories[(index // 5) % len(_factories)]
-                    _instruments.append(Instrument(factory))
+            with measure.block("Audio"):
+                if reset:
+                    _factories = tuple(factories())
+                    for instrument in _instruments:
+                        instrument.stop()
+                    _instruments.clear()
+                elif mute:
+                    for instrument in _instruments:
+                        instrument.fade(0)
+                else:
+                    sounds = tuple(_sounds(hands))
+                    while len(_instruments) < len(sounds):
+                        index = len(_instruments)
+                        factory = _factories[(index // 5) % len(_factories)]
+                        _instruments.append(Instrument(factory))
 
-                attenuate = sqrt(clamp(1 / (len(sounds) + 1))) / 100
-                for instrument, sound in zip(_instruments, sounds):
-                    frequency = _note(sound.frequency, sound.notes)
-                    instrument.glide(sound.glide)
-                    instrument.shift(frequency)
-                    instrument.pan(sound.pan)
-                    instrument.fade(sound.amplitude * attenuate)
+                    attenuate = sqrt(clamp(1 / (len(sounds) + 1))) / 100
+                    for instrument, sound in zip(_instruments, sounds):
+                        frequency = _note(sound.frequency, sound.notes)
+                        instrument.glide(sound.glide)
+                        instrument.shift(frequency)
+                        instrument.pan(sound.pan)
+                        instrument.fade(sound.amplitude * attenuate)
 
-                for instrument in _instruments[len(sounds) :]:
-                    instrument.fade(0)
+                    for instrument in _instruments[len(sounds) :]:
+                        instrument.fade(0)
     finally:
         _server.stop()
 
 
-def _device() -> Optional[int]:
+def _device(*patterns: str) -> Optional[int]:
     devices = debug(pa_get_output_devices(), "=> Available Audio Devices: ")
-    for name, index in zip(*devices):
-        if "usb audio" in name.lower():
-            return debug(index, f"=> Using Audio Device: {name}[", "]")
-
-    for name, index in zip(*devices):
-        if "analog" in name.lower():
-            return debug(index, f"=> Using Audio Device: {name}[", "]")
+    for pattern in patterns:
+        for name, index in zip(*devices):
+            if pattern.lower() in name.lower():
+                return debug(index, f"=> Using Audio Device: {name}[", "]")
 
 
 def _note(frequency: float, scale: Sequence[int]) -> float:

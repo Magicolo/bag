@@ -29,6 +29,7 @@ from mediapipe.tasks.python.vision.pose_landmarker import (
 from ultralytics import YOLO
 
 from channel import Channel, Closed
+import measure
 from utility import catch
 import vector
 from vector import Vector
@@ -316,12 +317,20 @@ Hand.DEFAULT = Hand(
 
 
 class Detector:
-    def __init__(self):
+    @staticmethod
+    def cpu() -> "Detector":
+        return Detector(BaseOptions.Delegate.CPU)
+
+    @staticmethod
+    def gpu() -> "Detector":
+        return Detector(BaseOptions.Delegate.GPU)
+
+    def __init__(self, device: BaseOptions.Delegate = BaseOptions.Delegate.GPU):
         self._hands = Channel[Tuple[Image, int]](), Channel[Sequence[Hand]]()
         self._poses = Channel[Tuple[Image, int]](), Channel[Sequence[Landmarks]]()
         self._threads = (
-            Thread(target=catch(_hands_actor, Closed, ()), args=self._hands),
-            Thread(target=catch(_poses_actor, Closed, ()), args=self._poses),
+            Thread(target=catch(_hands_actor, Closed, ()), args=(*self._hands, device)),
+            Thread(target=catch(_poses_actor, Closed, ()), args=(*self._poses, device)),
         )
         for thread in self._threads:
             thread.start()
@@ -338,10 +347,11 @@ class Detector:
     def detect(
         self, frame: MatLike, time: int
     ) -> Tuple[Sequence[Hand], Sequence[Landmarks]]:
-        image = Image(ImageFormat.SRGB, cvtColor(frame, COLOR_BGR2RGB))
-        self._hands[0].put((image, time))
-        self._poses[0].put((image, time))
-        return self._hands[1].get(), self._poses[1].get()
+        with measure.block("Detect"):
+            image = Image(ImageFormat.SRGB, cvtColor(frame, COLOR_BGR2RGB))
+            self._hands[0].put((image, time))
+            self._poses[0].put((image, time))
+            return self._hands[1].get(), self._poses[1].get()
 
     def draw(
         self,
@@ -349,60 +359,64 @@ class Detector:
         hands: Sequence[Hand],
         poses: Sequence[Landmarks],
     ) -> MatLike:
-        height, width, _ = frame.shape
-        for hand in hands:
-            low, high = vector.scale(hand.minimum, hand.maximum, 1.25)
-            frame = rectangle(
-                frame,
-                (int(low[0] * width), int(low[1] * height)),
-                (int(high[0] * width), int(high[1] * height)),
-                (127, 127, 0),
-                1,
-            )
-            for finger in hand.fingers:
-                low, high = vector.scale(finger.minimum, finger.maximum, 1.25)
+        with measure.block("Draw"):
+            height, width, _ = frame.shape
+            for hand in hands:
+                low, high = vector.scale(hand.minimum, hand.maximum, 1.25)
                 frame = rectangle(
                     frame,
                     (int(low[0] * width), int(low[1] * height)),
                     (int(high[0] * width), int(high[1] * height)),
-                    (0, 127, 127),
+                    (127, 127, 0),
                     1,
                 )
+                for finger in hand.fingers:
+                    low, high = vector.scale(finger.minimum, finger.maximum, 1.25)
+                    frame = rectangle(
+                        frame,
+                        (int(low[0] * width), int(low[1] * height)),
+                        (int(high[0] * width), int(high[1] * height)),
+                        (0, 127, 127),
+                        1,
+                    )
 
-        frame = _draw_landmarks(
-            frame,
-            (
-                [(landmark.x, landmark.y, (0, 255, 0)) for landmark in hand.landmarks]
-                for hand in hands
-            ),
-            (
-                (connection.start, connection.end, (0, 255, 0))
-                for connection in HandLandmarksConnections.HAND_CONNECTIONS
-            ),
-        )
-        frame = _draw_landmarks(
-            frame, ([(hand.x, hand.y, (255, 0, 0))] for hand in hands), []
-        )
-        frame = _draw_landmarks(
-            frame,
-            (
-                [(finger.x, finger.y, (255, 0, 0)) for finger in hand.fingers]
-                for hand in hands
-            ),
-            [],
-        )
-        frame = _draw_landmarks(
-            frame,
-            (
-                [(landmark[0], landmark[1], (0, 0, 255)) for landmark in pose]
-                for pose in poses
-            ),
-            (
-                (connection.start, connection.end, (0, 0, 255))
-                for connection in PoseLandmarksConnections.POSE_LANDMARKS
-            ),
-        )
-        return frame
+            frame = _draw_landmarks(
+                frame,
+                (
+                    [
+                        (landmark.x, landmark.y, (0, 255, 0))
+                        for landmark in hand.landmarks
+                    ]
+                    for hand in hands
+                ),
+                (
+                    (connection.start, connection.end, (0, 255, 0))
+                    for connection in HandLandmarksConnections.HAND_CONNECTIONS
+                ),
+            )
+            frame = _draw_landmarks(
+                frame, ([(hand.x, hand.y, (255, 0, 0))] for hand in hands), []
+            )
+            frame = _draw_landmarks(
+                frame,
+                (
+                    [(finger.x, finger.y, (255, 0, 0)) for finger in hand.fingers]
+                    for hand in hands
+                ),
+                [],
+            )
+            frame = _draw_landmarks(
+                frame,
+                (
+                    [(landmark[0], landmark[1], (0, 0, 255)) for landmark in pose]
+                    for pose in poses
+                ),
+                (
+                    (connection.start, connection.end, (0, 0, 255))
+                    for connection in PoseLandmarksConnections.POSE_LANDMARKS
+                ),
+            )
+            return frame
 
     @cached_property
     def _yolo_pose(self) -> YOLO:
@@ -415,15 +429,20 @@ class Detector:
         return model
 
 
-def _hands_actor(receive: Channel[Tuple[Image, int]], send: Channel[Sequence[Hand]]):
-    def load() -> GestureRecognizer:
+def _hands_actor(
+    receive: Channel[Tuple[Image, int]],
+    send: Channel[Sequence[Hand]],
+    device: BaseOptions.Delegate,
+):
+
+    def load(device: BaseOptions.Delegate) -> GestureRecognizer:
         return GestureRecognizer.create_from_options(
             GestureRecognizerOptions(
                 base_options=BaseOptions(
                     model_asset_path=_model_path(
                         "mediapipe", "gesture_recognizer.task"
                     ),
-                    delegate=BaseOptions.Delegate.GPU,
+                    delegate=device,
                 ),
                 running_mode=VisionTaskRunningMode.VIDEO,
                 num_hands=4,
@@ -431,57 +450,57 @@ def _hands_actor(receive: Channel[Tuple[Image, int]], send: Channel[Sequence[Han
         )
 
     _hands: Sequence[Hand] = ()
-    with load() as model:
+    with load(device) as model:
         while True:
             image, time = receive.get()
-            result = model.recognize_for_video(image, time)
-            defaults = (
-                Hand.DEFAULT
-                for _ in range(max(len(result.hand_landmarks) - len(_hands), 0))
-            )
-            _hands = tuple(
-                hand.updated(landmarks, handedness[0], gestures[0])
-                for hand, landmarks, handedness, gestures in zip(
-                    (*_hands, *defaults),
-                    result.hand_landmarks,
-                    result.handedness,
-                    result.gestures,
+            with measure.block("Detect Hands"):
+                result = model.recognize_for_video(image, time)
+                defaults = (
+                    Hand.DEFAULT
+                    for _ in range(max(len(result.hand_landmarks) - len(_hands), 0))
                 )
-            )
-            send.put(_hands)
+                _hands = tuple(
+                    hand.updated(landmarks, handedness[0], gestures[0])
+                    for hand, landmarks, handedness, gestures in zip(
+                        (*_hands, *defaults),
+                        result.hand_landmarks,
+                        result.handedness,
+                        result.gestures,
+                    )
+                )
+                send.put(_hands)
 
 
 def _poses_actor(
-    receive: Channel[Tuple[Image, int]], send: Channel[Sequence[Landmarks]]
+    receive: Channel[Tuple[Image, int]],
+    send: Channel[Sequence[Landmarks]],
+    device: BaseOptions.Delegate,
 ):
-    def load() -> PoseLandmarker:
+
+    def load(device: BaseOptions.Delegate) -> PoseLandmarker:
         return PoseLandmarker.create_from_options(
             PoseLandmarkerOptions(
                 base_options=BaseOptions(
                     model_asset_path=_model_path(
                         "mediapipe", "pose_landmarker_full.task"
                     ),
-                    delegate=BaseOptions.Delegate.GPU,
+                    delegate=device,
                 ),
                 running_mode=VisionTaskRunningMode.VIDEO,
             )
         )
 
-    with load() as model:
+    with load(device) as model:
         while True:
-            message = receive.get()
-            if message is None:
-
-                break
-
-            image, time = message
-            poses = model.detect_for_video(image, time)
-            send.put(
-                tuple(
-                    [(landmark.x, landmark.y) for landmark in pose]
-                    for pose in poses.pose_landmarks
+            image, time = receive.get()
+            with measure.block("Detect Pose"):
+                poses = model.detect_for_video(image, time)
+                send.put(
+                    tuple(
+                        [(landmark.x, landmark.y) for landmark in pose]
+                        for pose in poses.pose_landmarks
+                    )
                 )
-            )
 
 
 @staticmethod
@@ -518,72 +537,3 @@ def _draw_landmarks(
                 2,
             )
     return frame
-
-
-# def _predict_yolo_pose(model: YOLO, frame: MatLike) -> Iterable[Landmarks]:
-#     for results in model.predict(frame, stream=True):
-#         if results.keypoints:
-#             for pose in results.keypoints.xyn:
-#                 yield pose.tolist()
-
-
-# def _gesture_actor(
-#     receive: Channel[Tuple[MatLike, Sequence[Hand]]], send: Channel[Sequence[str]]
-# ):
-#     while True:
-#         frame, hands = receive.get()
-#         height, width, _ = frame.shape
-#         for hand in hands:
-#             low, high = vector.scale(hand.minimum, hand.maximum, 1.25)
-#             low, high = vector.clamp(low), vector.clamp(high)
-#             section = frame[
-#                 int(low[1] * height) : int(high[1] * height),
-#                 int(low[0] * width) : int(high[0] * width),
-#             ]
-#             _, jpg = imencode(".jpg", section)
-#             bytes, _ = base64_encode(jpg)
-#             ascii = bytes.decode("ascii")
-#             # Make an http call to ollama.
-#             response = requests.post(
-#                 "http://localhost:11434/api/generate",
-#                 json={
-#                     "model": "moondream",
-#                     "prompt": "You are an expert american sign language translator. Translate the hand sign in the image to a letter from the alphabet. When unsure, output '?'.",
-#                     "images": [ascii],
-#                     "stream": False,
-#                     "format": {
-#                         "type": "string",
-#                         "enum": [
-#                             "?",
-#                             "A",
-#                             "B",
-#                             "C",
-#                             "D",
-#                             "E",
-#                             "F",
-#                             "G",
-#                             "H",
-#                             "I",
-#                             "J",
-#                             "K",
-#                             "L",
-#                             "M",
-#                             "N",
-#                             "O",
-#                             "P",
-#                             "Q",
-#                             "R",
-#                             "S",
-#                             "T",
-#                             "U",
-#                             "V",
-#                             "W",
-#                             "X",
-#                             "Y",
-#                             "Z",
-#                         ],
-#                     },
-#                 },
-#             )
-#             content = dict(response.json())
-#             debug(str(content["response"]))
