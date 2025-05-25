@@ -1,7 +1,6 @@
 from pathlib import Path
 import zipfile
-from tf2onnx.convert import from_function
-import tensorflow
+from tf2onnx.convert import from_tflite
 
 for file in Path(__file__).parent.glob("*.task"):
     print(f"=> Extracting '{file}'.")
@@ -9,15 +8,14 @@ for file in Path(__file__).parent.glob("*.task"):
         zip.extractall(file.parent)
 
 for file in Path(__file__).parent.glob("*.tflite"):
-    print(f"=> Converting '{file}'.")
-    model = tensorflow.saved_model.load(file)
-    concrete = model.signatures["serving_default"]
-    name, settings = next(concrete.structured_input_signature[1].items())
-    settings.shape[0] = None
-    specification = tensorflow.TensorSpec(settings.shape, settings.dtype, name)
-    from_function(
-        concrete,
-        input_signature=[specification],
-        output_path=file.with_suffix(".onnx"),
-        opset=13,
-    )
+    output = file.with_suffix(".onnx")
+    if output.exists():
+        print(f"=> Skipping '{file}' as '{output}' already exists.")
+        continue
+
+    print(f"=> Converting '{file}' with settings.")
+    try:
+        from_tflite(file, output_path=output, opset=13)
+        print(f"=> Succeeded to convert '{file}' to '{output}'.")
+    except Exception as error:
+        print(f"=> Failed to convert '{file}' with '{error}'.")

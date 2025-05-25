@@ -3,6 +3,7 @@ target
 venv
 **/*.task
 **/*.tflite
+**/*.binarypb
 **/*.pt
 **/*.onnx
 **/*.safetensors

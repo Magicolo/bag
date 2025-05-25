@@ -7,9 +7,10 @@ RUN apt update && \
     ca-certificates git git-lfs curl jq grep nano apt-utils dpkg gettext procps build-essential pkg-config software-properties-common htop \
     python3 python3-pip python3-dev python3-tk python-is-python3 \
     make cmake libssl-dev lldb llvm llvm-dev libclang-dev clang protobuf-compiler zlib1g swig \
-    mesa-utils mesa-utils-extra glmark2 libnvidia-egl-xlib1 libnvidia-egl-xcb1 \
+    mesa-utils mesa-utils-extra glmark2 libnvidia-egl-xlib1 libnvidia-egl-xcb1 libcupti-dev libnccl2 libnccl-dev nvtop \
     portaudio19-dev libsndfile-dev libjack-jackd2-dev libportmidi-dev liblo-dev alsa-utils libasound2-dev libopencv-dev libgtk-3-dev libgl1 libglib2.0-0 libgl1-mesa-dev libxrender1 libxext6 libgl1-mesa-dri ffmpeg gstreamer1.0-tools gstreamer1.0-libav libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev && \
     update-ca-certificates && \
+    apt full-upgrade --yes && \
     apt autoremove --yes && \
     apt clean --yes && \
     rm --recursive --force /var/lib/apt/lists/* /tmp/* /var/tmp/* 
@@ -61,4 +62,4 @@ RUN REPOSITORY="cargo-bins/cargo-binstall" && \
 # Setup python.
 ENV LIBTORCH_USE_PYTORCH=1
 RUN pip install --break-system-packages --upgrade --index-url https://download.pytorch.org/whl/cu128 torch torchvision torchaudio && \
-    pip install --break-system-packages --upgrade ultralytics mediapipe pyo onnxruntime-gpu tensorflow tf2onnx
+    pip install --break-system-packages --upgrade ultralytics mediapipe pyo onnxruntime-gpu tensorflow[and-cuda] tf2onnx
