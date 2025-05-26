@@ -3,13 +3,11 @@ from typing import Iterable, Tuple
 
 
 from cv2 import (
-    CAP_PROP_AUTOFOCUS,
-    CAP_PROP_CONVERT_RGB,
-    CAP_PROP_FPS,
     CAP_PROP_FRAME_HEIGHT,
     CAP_PROP_FRAME_WIDTH,
+    CAP_PROP_GAMMA,
     CAP_PROP_POS_MSEC,
-    CAP_PROP_VIDEO_STREAM,
+    CAP_PROP_SHARPNESS,
     VideoCapture,
     flip,
 )
@@ -41,12 +39,10 @@ class Camera:
 def _actor(channel: Channel[Tuple[MatLike, int]]):
     _camera = VideoCapture(0)
     try:
-        _camera.set(CAP_PROP_FRAME_WIDTH, 340)
+        _camera.set(CAP_PROP_FRAME_WIDTH, 320)
         _camera.set(CAP_PROP_FRAME_HEIGHT, 240)
-        _camera.set(CAP_PROP_FPS, 30)
-        _camera.set(CAP_PROP_CONVERT_RGB, 1)
-        _camera.set(CAP_PROP_AUTOFOCUS, 0)
-        _camera.set(CAP_PROP_VIDEO_STREAM, 1)
+        _camera.set(CAP_PROP_SHARPNESS, 7)
+        _camera.set(CAP_PROP_GAMMA, 150)
 
         for _ in measure.loop("Camera", _camera.isOpened):
             success, frame = _camera.read()

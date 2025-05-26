@@ -453,7 +453,7 @@ def _hands_actor(
     with load(device) as model:
         while True:
             image, time = receive.get()
-            with measure.block("Detect Hands"):
+            with measure.block("Hands"):
                 result = model.recognize_for_video(image, time)
                 defaults = (
                     Hand.DEFAULT
@@ -493,7 +493,7 @@ def _poses_actor(
     with load(device) as model:
         while True:
             image, time = receive.get()
-            with measure.block("Detect Pose"):
+            with measure.block("Poses"):
                 poses = model.detect_for_video(image, time)
                 send.put(
                     tuple(

@@ -1,6 +1,7 @@
 from audio import Audio
 from camera import Camera
 from detect import Detector
+import measure
 from window import Window
 
 with Audio() as audio, Camera() as camera, Window() as window, Detector.gpu() as detector:
@@ -8,7 +9,7 @@ with Audio() as audio, Camera() as camera, Window() as window, Detector.gpu() as
     frame = None
     show = False
     mute = False
-    for frame, time in camera.frames():
+    for index, (frame, time) in enumerate(camera.frames()):
         hands, poses = detector.detect(frame, time)
 
         if show:
@@ -27,3 +28,6 @@ with Audio() as audio, Camera() as camera, Window() as window, Detector.gpu() as
                 break
 
         audio.send(hands, mute, reset)
+
+        if index % 10 == 0:
+            measure.flush()
