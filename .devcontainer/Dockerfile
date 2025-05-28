@@ -37,27 +37,5 @@ RUN git config --system pull.rebase true && \
     git config --system commit.gpgsign true && \
     git config --system uploadpack.allowFilter true
 
-# Setup act.
-RUN REPOSITORY="nektos/act" && \
-    VERSION=$(curl --location --silent --show-error --fail "https://api.github.com/repos/${REPOSITORY}/releases/latest" | jq --raw-output '.tag_name') && \
-    curl --location --silent --show-error --fail "https://github.com/${REPOSITORY}/releases/download/${VERSION}/act_Linux_x86_64.tar.gz" | \
-    tar --extract --gzip --mode=0755 --directory="/usr/local/bin" --exclude=LICENSE --exclude=README.md
-
-# Setup rust.
-ENV RUSTUP_HOME="/usr/local/rustup"
-ENV CARGO_HOME="/usr/local/cargo"
-ENV PATH="${PATH}:${CARGO_HOME}/bin"
-RUN curl --location --silent --show-error --fail "https://sh.rustup.rs" | sh -s -- -y --default-toolchain none && \
-    rustup toolchain install stable nightly --component rustfmt --component llvm-tools-preview --component rust-src --component clippy && \
-    rustup default stable
-
-# Setup cargo.
-RUN REPOSITORY="cargo-bins/cargo-binstall" && \
-    VERSION=$(curl --location --silent --show-error --fail "https://api.github.com/repos/${REPOSITORY}/releases/latest" | jq --raw-output '.tag_name') && \
-    curl --location --silent --show-error --fail "https://github.com/${REPOSITORY}/releases/download/${VERSION}/cargo-binstall-x86_64-unknown-linux-gnu.tgz" | \
-    tar --extract --gzip --mode=0755 --directory="/usr/local/bin" && \
-    cargo binstall cargo-watch cargo-update cargo-expand cargo-audit cargo-msrv cargo-hack cargo-semver-checks cargo-release cargo-nextest cargo-bloat cargo-llvm-cov && \
-    chmod --recursive 0777 "$CARGO_HOME"
-
 # Setup python.
 RUN pip install --break-system-packages --upgrade ultralytics mediapipe pyo
