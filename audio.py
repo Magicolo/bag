@@ -13,6 +13,8 @@ import measure
 from utility import catch, clamp, cut, debug
 import vector
 
+_Message = Tuple[Sequence[Hand], bool, bool]
+_CHANNELS = 8
 _PAD = (-1000, -1000, -1000, -1000, -1000)
 
 
@@ -77,7 +79,7 @@ class Instrument:
         #     size=0.9,
         #     bal=0.1,
         # ).out()
-        self._synthesizer = Pan(self._base, outs=2, pan=self._pan).out()  # type: ignore
+        self._synthesizer = Pan(self._base, outs=_CHANNELS, pan=self._pan).out()  # type: ignore
 
     def stop(self):
         self._synthesizer.stop()
@@ -95,10 +97,24 @@ class Instrument:
         self._frequency.time = glide
 
 
-_Message = Tuple[Sequence[Hand], bool, bool]
-
 
 class Audio:
+    """
+    Amplifier Layout:
+
+    1. Center Front
+    2. Center Sub
+    3. Left Side
+    4. Right Side?
+
+    5. Left Rear
+    6. Right Rear
+    7. Left Front
+    8. Right Front
+
+    POWER
+    """
+
     def __init__(self):
         self._channel = Channel[_Message]()
         self._thread = Thread(target=catch(_actor, Closed, ()), args=(self._channel,))
@@ -185,12 +201,14 @@ def _actor(channel: Channel[_Message]):
                 if new:
                     yield Factory(new=new, name=name, stamp=stamp)
 
-    _server = Server(audio="pulse", sr=48000, duplex=0, ichnls=0, nchnls=2)
+    _server = Server(
+        audio="pulse", sr=48000, duplex=0, ichnls=0, nchnls=_CHANNELS, buffersize=64
+    )
     _instruments: List[Instrument] = []
     _factories = tuple(factories())
 
     try:
-        _server.setInOutDevice(_device("digital", "usb audio", "analog"))
+        _server.setInOutDevice(_device("usb audio", "analog"))
         _server.boot().start()
         while True:
             hands, mute, reset = channel.get()

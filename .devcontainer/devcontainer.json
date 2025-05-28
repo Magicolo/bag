@@ -63,7 +63,8 @@
         "--device=/dev/video0",
         "--device=/dev/bus/usb",
         "--device=/dev/snd",
-        "--device=/dev/dri:/dev/dri"
+        "--device=/dev/dri:/dev/dri",
+        "--cap-add=SYS_NICE"
     ],
     "features": {
         "ghcr.io/devcontainers/features/common-utils": {},
