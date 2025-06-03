@@ -229,7 +229,7 @@ def _actor(channel: Channel[_Message]):
                         factory = _factories[(index // 5) % len(_factories)]
                         _instruments.append(Instrument(factory))
 
-                    attenuate = sqrt(clamp(1 / (len(sounds) + 1))) / 10
+                    attenuate = sqrt(clamp(1 / (len(sounds) + 1))) / 100
                     for instrument, sound in zip(_instruments, sounds):
                         frequency = _note(sound.frequency, sound.notes)
                         instrument.glide(sound.glide)

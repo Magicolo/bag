@@ -3,7 +3,7 @@ from enum import Enum
 from functools import cached_property
 from pathlib import Path
 from threading import Thread
-from typing import ClassVar, Iterable, List, Literal, Sequence, Tuple, Union
+from typing import ClassVar, Iterable, List, Literal, Optional, Sequence, Tuple, Union
 from mediapipe.tasks.python.components.containers.landmark import NormalizedLandmark
 from cv2 import circle, line, rectangle
 from cv2.typing import MatLike, Scalar
@@ -48,10 +48,13 @@ class Gesture(Enum):
     ILOVEYOU = 7
 
     @staticmethod
-    def from_name(name: str):
-        try:
-            return Gesture[name.upper()]
-        except ValueError:
+    def from_name(name: Optional[str]):
+        if name:
+            try:
+                return Gesture[name.upper()]
+            except ValueError:
+                return Gesture.NONE
+        else:
             return Gesture.NONE
 
 
@@ -61,10 +64,13 @@ class Handedness(Enum):
     RIGHT = 1
 
     @staticmethod
-    def from_name(name: str):
-        try:
-            return Handedness[name.upper()]
-        except ValueError:
+    def from_name(name: Optional[str]):
+        if name:
+            try:
+                return Handedness[name.upper()]
+            except ValueError:
+                return Handedness.NONE
+        else:
             return Handedness.NONE
 
 
@@ -429,6 +435,9 @@ class Detector:
         return model
 
 
+CONFIDENCE = 0.1
+
+
 def _hands_actor(
     receive: Channel[Tuple[Image, int]],
     send: Channel[Sequence[Hand]],
@@ -445,9 +454,27 @@ def _hands_actor(
                     delegate=device,
                 ),
                 running_mode=VisionTaskRunningMode.VIDEO,
+                min_tracking_confidence=CONFIDENCE,
+                min_hand_detection_confidence=CONFIDENCE,
+                min_hand_presence_confidence=CONFIDENCE,
                 num_hands=4,
             )
         )
+
+    # def load(device: BaseOptions.Delegate) -> HandLandmarker:
+    #     return HandLandmarker.create_from_options(
+    #         HandLandmarkerOptions(
+    #             base_options=BaseOptions(
+    #                 model_asset_path=_model_path("mediapipe", "hand_landmarker.task"),
+    #                 delegate=device,
+    #             ),
+    #             running_mode=VisionTaskRunningMode.VIDEO,
+    #             min_tracking_confidence=CONFIDENCE,
+    #             min_hand_detection_confidence=CONFIDENCE,
+    #             min_hand_presence_confidence=CONFIDENCE,
+    #             num_hands=4,
+    #         )
+    #     )
 
     _hands: Sequence[Hand] = ()
     with load(device) as model:
@@ -487,6 +514,10 @@ def _poses_actor(
                     delegate=device,
                 ),
                 running_mode=VisionTaskRunningMode.VIDEO,
+                num_poses=2,
+                min_pose_detection_confidence=CONFIDENCE,
+                min_pose_presence_confidence=CONFIDENCE,
+                min_tracking_confidence=CONFIDENCE,
             )
         )
 
