@@ -507,7 +507,7 @@ def _poses_actor(
 def _model_path(
     folder: Union[Literal["mediapipe"], Literal["yolo"]], name: str
 ) -> Path:
-    return Path(__file__).parent.joinpath("models", folder, name)
+    return Path(__file__).parent.parent.joinpath("models", folder, name)
 
 
 @staticmethod

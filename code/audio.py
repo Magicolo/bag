@@ -191,7 +191,7 @@ def _sounds(hands: Sequence[Hand]) -> Iterable[Sound]:
 def _actor(channel: Channel[_Message]):
     def factories() -> Iterable[Factory]:
         for file in sorted(
-            Path(__file__).parent.joinpath("instruments").iterdir(),
+            Path(__file__).parent.parent.joinpath("instruments").iterdir(),
             key=lambda file: file.stem,
         ):
             if file.is_file() and file.suffix == ".py":
