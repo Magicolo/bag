@@ -4,8 +4,9 @@ from functools import cached_property
 from pathlib import Path
 from threading import Thread
 from typing import ClassVar, Iterable, List, Literal, Optional, Sequence, Tuple, Union
+import cv2
 from mediapipe.tasks.python.components.containers.landmark import NormalizedLandmark
-from cv2 import circle, line, rectangle
+from cv2 import circle, cvtColor, line, rectangle
 from cv2.typing import MatLike, Scalar
 from mediapipe import Image, ImageFormat
 from mediapipe.tasks.python.core.base_options import BaseOptions
@@ -34,6 +35,7 @@ from utility import catch
 import vector
 from vector import Vector
 
+_CONFIDENCE = 0.5
 Landmarks = List[Tuple[float, float]]
 
 
@@ -354,7 +356,7 @@ class Detector:
         self, frame: MatLike, time: int
     ) -> Tuple[Sequence[Hand], Sequence[Landmarks]]:
         with measure.block("Detect"):
-            image = Image(ImageFormat.SRGB, frame)
+            image = Image(ImageFormat.SRGB, cvtColor(frame, cv2.COLOR_BGR2RGB))
             self._hands[0].put((image, time))
             self._poses[0].put((image, time))
             return self._hands[1].get(), self._poses[1].get()
@@ -435,9 +437,6 @@ class Detector:
         return model
 
 
-CONFIDENCE = 0.1
-
-
 def _hands_actor(
     receive: Channel[Tuple[Image, int]],
     send: Channel[Sequence[Hand]],
@@ -454,9 +453,9 @@ def _hands_actor(
                     delegate=device,
                 ),
                 running_mode=VisionTaskRunningMode.VIDEO,
-                min_tracking_confidence=CONFIDENCE,
-                min_hand_detection_confidence=CONFIDENCE,
-                min_hand_presence_confidence=CONFIDENCE,
+                min_tracking_confidence=_CONFIDENCE,
+                min_hand_detection_confidence=_CONFIDENCE,
+                min_hand_presence_confidence=_CONFIDENCE,
                 num_hands=4,
             )
         )
@@ -515,9 +514,9 @@ def _poses_actor(
                 ),
                 running_mode=VisionTaskRunningMode.VIDEO,
                 num_poses=2,
-                min_pose_detection_confidence=CONFIDENCE,
-                min_pose_presence_confidence=CONFIDENCE,
-                min_tracking_confidence=CONFIDENCE,
+                min_pose_detection_confidence=_CONFIDENCE,
+                min_pose_presence_confidence=_CONFIDENCE,
+                min_tracking_confidence=_CONFIDENCE,
             )
         )
 
