@@ -37,8 +37,8 @@ class Camera:
 def _actor(channel: Channel[Tuple[MatLike, int]]):
     _camera = VideoCapture(0)
     try:
-        _camera.set(CAP_PROP_FRAME_WIDTH, 320)
-        _camera.set(CAP_PROP_FRAME_HEIGHT, 240)
+        _camera.set(CAP_PROP_FRAME_WIDTH, 640)
+        _camera.set(CAP_PROP_FRAME_HEIGHT, 480)
         # _camera.set(CAP_PROP_SHARPNESS, 5)
         # _camera.set(CAP_PROP_GAMMA, 125)
 
