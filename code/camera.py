@@ -39,10 +39,13 @@ class Camera:
 def _actor(channel: Channel[Tuple[MatLike, int]]):
     _camera = VideoCapture(0)
     try:
-        _camera.set(CAP_PROP_FRAME_WIDTH, 640)
-        _camera.set(CAP_PROP_FRAME_HEIGHT, 480)
+        _camera.set(CAP_PROP_FRAME_WIDTH, 352)
+        _camera.set(CAP_PROP_FRAME_HEIGHT, 288)
         _camera.set(CAP_PROP_SHARPNESS, 5)
         _camera.set(CAP_PROP_GAMMA, 125)
+        print(
+            f"=> Camera Resolution: {int(_camera.get(CAP_PROP_FRAME_WIDTH))}x{int(_camera.get(CAP_PROP_FRAME_HEIGHT))}"
+        )
 
         for _ in measure.loop("Camera", _camera.isOpened):
             success, frame = _camera.read()

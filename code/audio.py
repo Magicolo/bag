@@ -8,7 +8,7 @@ from typing import Callable, ClassVar, Iterable, List, Optional, Sequence, Set, 
 
 from pyo import Server, PyoObject, Sine, Pan, SigTo, midiToHz, hzToMidi, pa_get_output_devices  # type: ignore
 from channel import Channel, Closed
-from detect import Gesture, Hand
+from detect import Gesture, Hand, Pose
 import measure
 from utility import catch, clamp, cut, debug
 import vector
@@ -23,7 +23,7 @@ import vector
 # TODO: When 4 left hands are detected, make it special.
 
 
-_Message = Tuple[Sequence[Hand], bool, bool]
+_Message = Tuple[Sequence[Hand], Sequence[Pose], bool, bool]
 _CHANNELS = 8
 _PAD = (-1000, -1000, -1000, -1000, -1000)
 
@@ -127,8 +127,10 @@ class Audio:
         self._channel.close()
         self._thread.join()
 
-    def send(self, hands: Sequence[Hand], mute: bool, reset: bool):
-        self._channel.put((hands, mute, reset))
+    def send(
+        self, hands: Sequence[Hand], poses: Sequence[Pose], mute: bool, reset: bool
+    ):
+        self._channel.put((hands, poses, mute, reset))
 
 
 def _sound(
@@ -211,7 +213,8 @@ def _actor(channel: Channel[_Message]):
         _server.setInOutDevice(_device("usb audio", "analog"))
         _server.boot().start()
         while True:
-            hands, mute, reset = channel.get()
+            # TODO: Use the poses.
+            hands, poses, mute, reset = channel.get()
 
             with measure.block("Audio"):
                 if reset:

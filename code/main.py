@@ -27,7 +27,7 @@ with Audio() as audio, Camera() as camera, Window() as window, Detector.gpu() as
             elif key in (ord("q"), 27):
                 break
 
-        audio.send(hands, mute, reset)
+        audio.send(hands, poses, mute, reset)
 
         if index % 10 == 0:
             measure.flush()
