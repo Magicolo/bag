@@ -13,6 +13,16 @@ import measure
 from utility import catch, clamp, cut, debug
 import vector
 
+
+# TODO: Require some gesture to start the interaction?
+# TODO: Create an evaluation loop to tweak the instruments. Use Python's eval and an 'instruments' folder.
+# TODO: Finger that touch must charge a note.
+# TODO: Convert kick/punch impacts in cymbal/percussion-like sounds.
+# TODO: Use handedness to choose the instrument.
+# TODO: When 4 right hands are detected, make it special.
+# TODO: When 4 left hands are detected, make it special.
+
+
 _Message = Tuple[Sequence[Hand], bool, bool]
 _CHANNELS = 8
 _PAD = (-1000, -1000, -1000, -1000, -1000)
@@ -24,15 +34,6 @@ class Notes(Tuple[int], Enum):
     HARMONIC = (0, 0, 2, 3, 3, 5, 5, 7, 8, 8, 8, 11)
     MELODIC = (0, 0, 2, 3, 3, 5, 5, 7, 7, 9, 9, 11)
     SECRET = (*_PAD, 19, 18, 15, 9, 8, 16, 20, 24, *_PAD)
-
-
-# TODO: Require some gesture to start the interaction?
-# TODO: Create an evaluation loop to tweak the instruments. Use Python's eval and an 'instruments' folder.
-# TODO: Finger that touch must charge a note.
-# TODO: Convert kick/punch impacts in cymbal/percussion-like sounds.
-# TODO: Use handedness to choose the instrument.
-# TODO: When 4 right hands are detected, make it special.
-# TODO: When 4 left hands are detected, make it special.
 
 
 @dataclass(frozen=True)
@@ -97,7 +98,6 @@ class Instrument:
         self._frequency.time = glide
 
 
-
 class Audio:
     """
     Amplifier Layout:
@@ -105,7 +105,7 @@ class Audio:
     1. Center Front
     2. Center Sub
     3. Left Side
-    4. Right Side?
+    4. Right Side
 
     5. Left Rear
     6. Right Rear
@@ -140,12 +140,12 @@ def _sound(
     glide: bool,
     notes: Sequence[int],
 ) -> Sound:
-    floor = 0.0 if scale <= 0.0 else scale / 10.0
+    floor = 0.0 if scale <= 0.0 else scale / 5.0
     range = 1000.0 if scale <= 0.0 else 50.0 / scale
     return Sound(
         frequency=clamp(1 - y) * range * (index % 5 + 1) + 50.0,
         amplitude=clamp(cut(speed, floor) * 100.0),
-        pan=clamp(x),
+        pan=clamp(1 - x),
         notes=notes,
         glide=0.25 if glide else 0.025,
     )
@@ -229,7 +229,7 @@ def _actor(channel: Channel[_Message]):
                         factory = _factories[(index // 5) % len(_factories)]
                         _instruments.append(Instrument(factory))
 
-                    attenuate = sqrt(clamp(1 / (len(sounds) + 1))) / 100
+                    attenuate = sqrt(clamp(1 / (len(sounds) + 1))) / 10
                     for instrument, sound in zip(_instruments, sounds):
                         frequency = _note(sound.frequency, sound.notes)
                         instrument.glide(sound.glide)

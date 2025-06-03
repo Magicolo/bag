@@ -61,6 +61,7 @@
     "runArgs": [
         "--gpus=all",
         "--device=/dev/video0",
+        // "--device=/dev/video1",
         "--device=/dev/bus/usb",
         "--device=/dev/snd",
         "--device=/dev/dri:/dev/dri",
@@ -86,12 +87,6 @@
                 "mechatroner.rainbow-csv",
                 "dotenv.dotenv-vscode",
                 "Codeium.codeium",
-                // Rust
-                "tamasfe.even-better-toml",
-                "vadimcn.vscode-lldb",
-                "rust-lang.rust-analyzer",
-                "Swellaby.vscode-rust-test-adapter",
-                "fill-labs.dependi",
                 // Python
                 "ms-python.python",
                 "ms-python.isort",
@@ -115,17 +110,6 @@
                     "warning"
                 ],
                 "todo-tree.regex.regex": "(//|#|<!--|;|/\\*|^|^[ \\t]*(-|\\d+.))\\s*($TAGS)|todo!|unimplemented!",
-                // Rust
-                "rust-analyzer.check.command": "clippy",
-                "rust-analyzer.showUnlinkedFileNotification": false,
-                "rust-analyzer.imports.preferNoStd": true,
-                "rust-analyzer.testExplorer": true,
-                "rust-analyzer.rustfmt.overrideCommand": [
-                    "bash",
-                    "-c",
-                    "$(rustup which --toolchain nightly rustfmt) --edition 2024 --style-edition 2024 --unstable-features --config wrap_comments=true --config imports_granularity='Crate' --config format_code_in_doc_comments=true --config reorder_impl_items=true --config group_imports='One' ${file}"
-                ],
-                "rust-analyzer.rustfmt.rangeFormatting.enable": true,
                 // Python
                 "python.analysis.autoImportCompletions": true,
                 "python.analysis.typeCheckingMode": "standard",

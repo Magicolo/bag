@@ -5,7 +5,6 @@ from typing import Iterable, Tuple
 from cv2 import (
     CAP_PROP_FRAME_HEIGHT,
     CAP_PROP_FRAME_WIDTH,
-    CAP_PROP_GAMMA,
     CAP_PROP_POS_MSEC,
     CAP_PROP_SHARPNESS,
     VideoCapture,
@@ -41,8 +40,8 @@ def _actor(channel: Channel[Tuple[MatLike, int]]):
     try:
         _camera.set(CAP_PROP_FRAME_WIDTH, 320)
         _camera.set(CAP_PROP_FRAME_HEIGHT, 240)
-        _camera.set(CAP_PROP_SHARPNESS, 7)
-        _camera.set(CAP_PROP_GAMMA, 150)
+        _camera.set(CAP_PROP_SHARPNESS, 5)
+        # _camera.set(CAP_PROP_GAMMA, 125)
 
         for _ in measure.loop("Camera", _camera.isOpened):
             success, frame = _camera.read()
