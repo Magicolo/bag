@@ -1,4 +1,3 @@
-from threading import Thread
 from typing import Iterable, Tuple
 
 
@@ -13,16 +12,15 @@ from cv2 import (
 )
 from cv2.typing import MatLike
 
-from channel import Channel, Closed
+from channel import Channel
 import measure
-from utility import catch
+from utility import run
 
 
 class Camera:
     def __init__(self):
         self._channel = Channel[Tuple[MatLike, int]]()
-        self._thread = Thread(target=catch(_actor, Closed, ()), args=(self._channel,))
-        self._thread.start()
+        self._thread = run(_actor, self._channel)
 
     def __enter__(self):
         return self

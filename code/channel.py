@@ -1,8 +1,15 @@
 from threading import Condition, Lock
-from typing import Generic, Sequence
+from typing import Generic, Sequence, Tuple, overload
 from typing import Any, Optional, TypeVar
 
 _T = TypeVar("_T")
+_F = TypeVar("_F", bound=Tuple)
+_T0 = TypeVar("_T0")
+_T1 = TypeVar("_T1")
+_T2 = TypeVar("_T2")
+_T3 = TypeVar("_T3")
+_T4 = TypeVar("_T4")
+_T5 = TypeVar("_T5")
 _EMPTY: Any = object()
 _CLOSE: Any = object()
 
@@ -65,6 +72,83 @@ class Channel(Generic[_T]):
                 self._value = value
                 self._wait.notify()
                 return None if old is _EMPTY else old
+
+
+class Fuse(Generic[_F]):
+    def __init__(self, channels: Sequence[Channel]):
+        self._channels = channels
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        for channel in self._channels:
+            channel.__exit__(exc_type, exc_value, traceback)
+
+    def close(self):
+        for channel in self._channels:
+            channel.close()
+
+    def get(self) -> _F:
+        return tuple(channel.get() for channel in self._channels)  # type: ignore
+
+    def put(self, values: _F):
+        for value, channel in zip(values, self._channels):
+            channel.put(value)
+
+
+@overload
+def fuse(channel0: Channel[_T0]) -> Fuse[Tuple[_T0]]:
+    (...)
+
+
+@overload
+def fuse(channel0: Channel[_T0], channel1: Channel[_T1]) -> Fuse[Tuple[_T0, _T1]]:
+    (...)
+
+
+@overload
+def fuse(
+    channel0: Channel[_T0], channel1: Channel[_T1], channel2: Channel[_T2]
+) -> Fuse[Tuple[_T0, _T1, _T2]]:
+    (...)
+
+
+@overload
+def fuse(
+    channel0: Channel[_T0],
+    channel1: Channel[_T1],
+    channel2: Channel[_T2],
+    channel3: Channel[_T3],
+) -> Fuse[Tuple[_T0, _T1, _T2, _T3]]:
+    (...)
+
+
+@overload
+def fuse(
+    channel0: Channel[_T0],
+    channel1: Channel[_T1],
+    channel2: Channel[_T2],
+    channel3: Channel[_T3],
+    channel4: Channel[_T4],
+) -> Fuse[Tuple[_T0, _T1, _T2, _T3, _T4]]:
+    (...)
+
+
+@overload
+def fuse(
+    channel0: Channel[_T0],
+    channel1: Channel[_T1],
+    channel2: Channel[_T2],
+    channel3: Channel[_T3],
+    channel4: Channel[_T4],
+    channel5: Channel[_T5],
+) -> Fuse[Tuple[_T0, _T1, _T2, _T3, _T4, _T5]]:
+    (...)
+
+
+def fuse(*channels: Channel, **pairs: Channel) -> Fuse[Tuple]:
+    return Fuse(tuple((*channels, *pairs.values())))
 
 
 class Broadcast(Generic[_T]):

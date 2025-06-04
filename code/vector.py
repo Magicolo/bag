@@ -2,6 +2,7 @@ from math import acos, degrees, inf, sqrt
 from typing import Tuple
 
 Vector = Tuple[float, float, float]
+Bound = Tuple[Vector, Vector]
 ZERO = (0.0, 0.0, 0.0)
 ONE = (1.0, 1.0, 1.0)
 INFINITY = (inf, inf, inf)
@@ -68,7 +69,7 @@ def maximum(*vectors: Vector) -> Vector:
     return maximum
 
 
-def scale(minimum: Vector, maximum: Vector, scale: float) -> Tuple[Vector, Vector]:
+def scale(minimum: Vector, maximum: Vector, scale: float) -> Bound:
     size = multiply(subtract(maximum, minimum), scale * 0.5)
     center = mean(minimum, maximum)
     return subtract(center, size), add(center, size)
@@ -102,6 +103,12 @@ def area(minimum: Vector, maximum: Vector) -> float:
 def volume(minimum: Vector, maximum: Vector) -> float:
     x, y, z = subtract(maximum, minimum)
     return x * y * z
+
+
+def overlap(*bounds: Bound) -> Bound:
+    low = maximum(*(bound[0] for bound in bounds))
+    high = clamp(minimum(*(bound[1] for bound in bounds)), low, INFINITY)
+    return low, high
 
 
 def angle(

@@ -2,12 +2,11 @@ from dataclasses import dataclass
 from enum import Enum
 from functools import cached_property
 from pathlib import Path
-from threading import Thread
-from typing import ClassVar, Iterable, List, Literal, Optional, Sequence, Tuple, Union
+from typing import ClassVar, Iterable, Literal, Optional, Self, Sequence, Tuple, Union
 import cv2
 from mediapipe.tasks.python.components.containers.landmark import NormalizedLandmark
-from cv2 import circle, cvtColor, line, rectangle
-from cv2.typing import MatLike, Scalar
+from cv2 import cvtColor
+from cv2.typing import MatLike
 from mediapipe import Image, ImageFormat
 from mediapipe.tasks.python.core.base_options import BaseOptions
 from mediapipe.tasks.python.components.containers.category import Category
@@ -29,13 +28,11 @@ from mediapipe.tasks.python.vision.pose_landmarker import (
 )
 from ultralytics import YOLO
 
-from channel import Channel, Closed
+from channel import Channel
 import measure
-from utility import catch
+from utility import run
 import vector
-from vector import Vector
-
-_CONFIDENCE = 0.5
+from vector import Bound, Vector
 
 
 class Gesture(Enum):
@@ -77,7 +74,16 @@ class Handedness(Enum):
 
 @dataclass(frozen=True)
 class Landmark:
-    DEFAULT: ClassVar["Landmark"]
+    DEFAULT: ClassVar[Self]
+
+    @staticmethod
+    def new(landmark: NormalizedLandmark) -> "Landmark":
+        return Landmark(
+            position=(landmark.x or 0.0, landmark.y or 0.0, landmark.z or 0.0),
+            velocity=(0.0, 0.0, 0.0),
+            visibility=landmark.visibility or 0.0,
+            presence=landmark.presence or 0.0,
+        )
 
     position: Vector
     velocity: Vector
@@ -100,13 +106,20 @@ class Landmark:
     def speed(self) -> float:
         return vector.magnitude(self.velocity)
 
-    def updated(self, landmark: NormalizedLandmark) -> "Landmark":
-        x, y, z = landmark.x or 0.0, landmark.y or 0.0, landmark.z or 0.0
+    def update(self, landmark: Self) -> "Landmark":
         return Landmark(
-            position=(x, y, z),
-            velocity=(x - self.x, y - self.y, z - self.z),
-            visibility=landmark.visibility or 0.0,
-            presence=landmark.presence or 0.0,
+            position=landmark.position,
+            velocity=vector.subtract(landmark.position, self.position),
+            visibility=landmark.visibility,
+            presence=landmark.presence,
+        )
+
+    def move(self, motion: Vector) -> "Landmark":
+        return Landmark(
+            position=vector.add(self.position, motion),
+            velocity=motion,
+            visibility=self.visibility,
+            presence=self.presence,
         )
 
 
@@ -133,6 +146,10 @@ class Composite:
     @property
     def z(self) -> float:
         return self.position[2]
+
+    @property
+    def bound(self) -> Bound:
+        return self.minimum, self.maximum
 
     @cached_property
     def position(self) -> Vector:
@@ -161,6 +178,14 @@ class Composite:
     @cached_property
     def maximum(self) -> Vector:
         return vector.maximum(*(landmark.position for landmark in self.landmarks))
+
+    def distance(self, other: Self, square=False) -> float:
+        return sum(
+            vector.distance(
+                old.position, (new.x or 0.0, new.y or 0.0, new.z or 0.0), square=square
+            )
+            for old, new in zip(self.landmarks, other.landmarks)
+        )
 
 
 @dataclass(frozen=True)
@@ -198,11 +223,24 @@ class Finger(Composite):
 
 @dataclass(frozen=True)
 class Hand(Composite):
-    DEFAULT: ClassVar["Hand"]
+    DEFAULT: ClassVar[Self]
+    CONNECTIONS: ClassVar[Sequence[Tuple[int, int]]] = tuple(
+        (connection.start, connection.end)
+        for connection in HandLandmarksConnections.HAND_CONNECTIONS
+    )
+
+    @staticmethod
+    def new(
+        landmarks: Iterable[NormalizedLandmark], handedness: Category, gesture: Category
+    ) -> "Hand":
+        return Hand(
+            landmarks=tuple(Landmark.new(normalized) for normalized in landmarks),
+            handedness=Handedness.from_name(handedness.category_name or ""),
+            gesture=Gesture.from_name(gesture.category_name or ""),
+        )
 
     handedness: Handedness
     gesture: Gesture
-    frames: int
 
     @cached_property
     def palm(self) -> Composite:
@@ -285,7 +323,7 @@ class Hand(Composite):
     def wrist(self) -> Landmark:
         return self.landmarks[HandLandmark.WRIST]
 
-    def triangle(self, hand: "Hand") -> bool:
+    def triangle(self, hand: Self) -> bool:
         if self == hand or self.handedness == hand.handedness:
             return False
         else:
@@ -298,20 +336,20 @@ class Hand(Composite):
                 and not self.index.touches(hand.thumb)
             )
 
-    def updated(
-        self,
-        landmarks: Iterable[NormalizedLandmark],
-        handedness: Category,
-        gesture: Category,
-    ) -> "Hand":
+    def update(self, hand: Self) -> "Hand":
         return Hand(
             landmarks=tuple(
-                landmark.updated(normalized)
-                for landmark, normalized in zip(self.landmarks, landmarks)
+                old.update(new) for old, new in zip(self.landmarks, hand.landmarks)
             ),
-            handedness=Handedness.from_name(handedness.category_name or ""),
-            gesture=Gesture.from_name(gesture.category_name or ""),
-            frames=self.frames + 1,
+            handedness=hand.handedness,
+            gesture=hand.gesture,
+        )
+
+    def move(self, motion: Vector) -> "Hand":
+        return Hand(
+            landmarks=tuple(landmark.move(motion) for landmark in self.landmarks),
+            handedness=self.handedness,
+            gesture=self.gesture,
         )
 
 
@@ -319,15 +357,20 @@ Hand.DEFAULT = Hand(
     landmarks=tuple(Landmark.DEFAULT for _ in range(21)),
     handedness=Handedness.NONE,
     gesture=Gesture.NONE,
-    frames=0,
 )
 
 
 @dataclass(frozen=True)
 class Pose(Composite):
-    DEFAULT: ClassVar["Pose"]
+    DEFAULT: ClassVar[Self]
+    CONNECTIONS: ClassVar[Sequence[Tuple[int, int]]] = tuple(
+        (connection.start, connection.end)
+        for connection in PoseLandmarksConnections.POSE_LANDMARKS
+    )
 
-    frames: int
+    @staticmethod
+    def new(landmarks: Iterable[NormalizedLandmark]) -> "Pose":
+        return Pose(landmarks=tuple(map(Landmark.new, landmarks)))
 
     @cached_property
     def eyes(self) -> Tuple[Composite, Composite]:
@@ -447,40 +490,36 @@ class Pose(Composite):
             ),
         )
 
-    def updated(
-        self,
-        landmarks: Iterable[NormalizedLandmark],
-    ) -> "Pose":
+    def update(self, pose: Self) -> "Pose":
         return Pose(
             landmarks=tuple(
-                landmark.updated(normalized)
-                for landmark, normalized in zip(self.landmarks, landmarks)
-            ),
-            frames=self.frames + 1,
+                old.update(new) for old, new in zip(self.landmarks, pose.landmarks)
+            )
+        )
+
+    def move(self, motion: Vector) -> "Pose":
+        return Pose(
+            landmarks=tuple(landmark.move(motion) for landmark in self.landmarks)
         )
 
 
-Pose.DEFAULT = Pose(landmarks=tuple(Landmark.DEFAULT for _ in range(33)), frames=0)
+Pose.DEFAULT = Pose(landmarks=tuple(Landmark.DEFAULT for _ in range(33)))
 
 
 class Detector:
-    @staticmethod
-    def cpu() -> "Detector":
-        return Detector(BaseOptions.Delegate.CPU)
-
-    @staticmethod
-    def gpu() -> "Detector":
-        return Detector(BaseOptions.Delegate.GPU)
-
-    def __init__(self, device: BaseOptions.Delegate = BaseOptions.Delegate.GPU):
+    def __init__(
+        self,
+        device: BaseOptions.Delegate = BaseOptions.Delegate.GPU,
+        confidence: float = 0.5,
+        hands=4,
+        poses=2,
+    ):
         self._hands = Channel[Tuple[Image, int]](), Channel[Sequence[Hand]]()
         self._poses = Channel[Tuple[Image, int]](), Channel[Sequence[Pose]]()
         self._threads = (
-            Thread(target=catch(_hands_actor, Closed, ()), args=(*self._hands, device)),
-            Thread(target=catch(_poses_actor, Closed, ()), args=(*self._poses, device)),
+            run(_hands_actor, *self._hands, device, confidence, hands),
+            run(_poses_actor, *self._poses, device, confidence, poses),
         )
-        for thread in self._threads:
-            thread.start()
 
     def __enter__(self):
         return self
@@ -498,75 +537,9 @@ class Detector:
             image = Image(ImageFormat.SRGB, cvtColor(frame, cv2.COLOR_BGR2RGB))
             self._hands[0].put((image, time))
             self._poses[0].put((image, time))
-            return self._hands[1].get(), self._poses[1].get()
-
-    def draw(
-        self,
-        frame: MatLike,
-        hands: Sequence[Hand],
-        poses: Sequence[Pose],
-    ) -> MatLike:
-        with measure.block("Draw"):
-            height, width, _ = frame.shape
-            for hand in hands:
-                low, high = vector.scale(hand.minimum, hand.maximum, 1.25)
-                frame = rectangle(
-                    frame,
-                    (int(low[0] * width), int(low[1] * height)),
-                    (int(high[0] * width), int(high[1] * height)),
-                    (127, 127, 0),
-                    1,
-                )
-                for finger in hand.fingers:
-                    low, high = vector.scale(finger.minimum, finger.maximum, 1.25)
-                    frame = rectangle(
-                        frame,
-                        (int(low[0] * width), int(low[1] * height)),
-                        (int(high[0] * width), int(high[1] * height)),
-                        (0, 127, 127),
-                        1,
-                    )
-
-            frame = _draw_landmarks(
-                frame,
-                (
-                    [
-                        (landmark.x, landmark.y, (0, 255, 0))
-                        for landmark in hand.landmarks
-                    ]
-                    for hand in hands
-                ),
-                (
-                    (connection.start, connection.end, (0, 255, 0))
-                    for connection in HandLandmarksConnections.HAND_CONNECTIONS
-                ),
-            )
-            frame = _draw_landmarks(
-                frame, ([(hand.x, hand.y, (255, 0, 0))] for hand in hands), []
-            )
-            frame = _draw_landmarks(
-                frame,
-                (
-                    [(finger.x, finger.y, (255, 0, 0)) for finger in hand.fingers]
-                    for hand in hands
-                ),
-                [],
-            )
-            frame = _draw_landmarks(
-                frame,
-                (
-                    [
-                        (landmark.x, landmark.y, (0, 0, 255))
-                        for landmark in pose.landmarks
-                    ]
-                    for pose in poses
-                ),
-                (
-                    (connection.start, connection.end, (0, 0, 255))
-                    for connection in PoseLandmarksConnections.POSE_LANDMARKS
-                ),
-            )
-            return frame
+            hands = self._hands[1].get()
+            poses = self._poses[1].get()
+            return hands, poses
 
     @cached_property
     def _yolo_pose(self) -> YOLO:
@@ -583,9 +556,13 @@ def _hands_actor(
     receive: Channel[Tuple[Image, int]],
     send: Channel[Sequence[Hand]],
     device: BaseOptions.Delegate,
+    confidence: float,
+    hands: int,
 ):
 
-    def load(device: BaseOptions.Delegate) -> GestureRecognizer:
+    def load(
+        device: BaseOptions.Delegate, confidence: float, hands: int
+    ) -> GestureRecognizer:
         return GestureRecognizer.create_from_options(
             GestureRecognizerOptions(
                 base_options=BaseOptions(
@@ -595,10 +572,10 @@ def _hands_actor(
                     delegate=device,
                 ),
                 running_mode=VisionTaskRunningMode.VIDEO,
-                min_tracking_confidence=_CONFIDENCE,
-                min_hand_detection_confidence=_CONFIDENCE,
-                min_hand_presence_confidence=_CONFIDENCE,
-                num_hands=4,
+                min_tracking_confidence=confidence,
+                min_hand_detection_confidence=confidence,
+                min_hand_presence_confidence=confidence,
+                num_hands=hands,
             )
         )
 
@@ -613,39 +590,36 @@ def _hands_actor(
     #             min_tracking_confidence=CONFIDENCE,
     #             min_hand_detection_confidence=CONFIDENCE,
     #             min_hand_presence_confidence=CONFIDENCE,
-    #             num_hands=4,
+    #             num_hands=_HANDS,
     #         )
     #     )
 
-    _hands: Sequence[Hand] = ()
-    with load(device) as model:
+    with load(device, confidence, hands) as model:
         while True:
             image, time = receive.get()
             with measure.block("Hands"):
                 result = model.recognize_for_video(image, time)
-                defaults = (
-                    Hand.DEFAULT
-                    for _ in range(max(len(result.hand_landmarks) - len(_hands), 0))
-                )
-                _hands = tuple(
-                    hand.updated(landmarks, handedness[0], gestures[0])
-                    for hand, landmarks, handedness, gestures in zip(
-                        (*_hands, *defaults),
-                        result.hand_landmarks,
-                        result.handedness,
-                        result.gestures,
+                send.put(
+                    tuple(
+                        Hand.new(landmarks, handedness[0], gestures[0])
+                        for landmarks, handedness, gestures in zip(
+                            result.hand_landmarks, result.handedness, result.gestures
+                        )
                     )
                 )
-                send.put(_hands)
 
 
 def _poses_actor(
     receive: Channel[Tuple[Image, int]],
     send: Channel[Sequence[Pose]],
     device: BaseOptions.Delegate,
+    confidence: float,
+    poses: int,
 ):
 
-    def load(device: BaseOptions.Delegate) -> PoseLandmarker:
+    def load(
+        device: BaseOptions.Delegate, confidence: float, poses: int
+    ) -> PoseLandmarker:
         return PoseLandmarker.create_from_options(
             PoseLandmarkerOptions(
                 base_options=BaseOptions(
@@ -655,63 +629,20 @@ def _poses_actor(
                     delegate=device,
                 ),
                 running_mode=VisionTaskRunningMode.VIDEO,
-                num_poses=2,
-                min_pose_detection_confidence=_CONFIDENCE,
-                min_pose_presence_confidence=_CONFIDENCE,
-                min_tracking_confidence=_CONFIDENCE,
+                min_pose_detection_confidence=confidence,
+                min_pose_presence_confidence=confidence,
+                min_tracking_confidence=confidence,
+                num_poses=poses,
             )
         )
 
-    _poses: Sequence[Pose] = ()
-    with load(device) as model:
+    with load(device, confidence, poses) as model:
         while True:
             image, time = receive.get()
             with measure.block("Poses"):
                 result = model.detect_for_video(image, time)
-                defaults = (
-                    Pose.DEFAULT
-                    for _ in range(max(len(result.pose_landmarks) - len(_poses), 0))
-                )
-                _poses = tuple(
-                    pose.updated(landmarks)
-                    for pose, landmarks in zip(
-                        (*_poses, *defaults), result.pose_landmarks
-                    )
-                )
-                send.put(_poses)
+                send.put(tuple(map(Pose.new, result.pose_landmarks)))
 
 
-@staticmethod
-def _model_path(
-    folder: Union[Literal["mediapipe"], Literal["yolo"]], name: str
-) -> Path:
-    return Path(__file__).parent.parent.joinpath("models", folder, name)
-
-
-@staticmethod
-def _draw_landmarks(
-    frame: MatLike,
-    landmarks: Iterable[List[Tuple[float, float, Scalar]]],
-    connections: Iterable[Tuple[int, int, Scalar]],
-):
-    height, width, _ = frame.shape
-    for group in landmarks:
-        for landmark in group:
-            frame = circle(
-                frame,
-                (int(landmark[0] * width), int(landmark[1] * height)),
-                5,
-                landmark[2],
-                -1,
-            )
-        for connection in connections:
-            start = group[connection[0]]
-            end = group[connection[1]]
-            frame = line(
-                frame,
-                (int(start[0] * width), int(start[1] * height)),
-                (int(end[0] * width), int(end[1] * height)),
-                connection[2],
-                2,
-            )
-    return frame
+def _model_path(folder: Union[Literal["mediapipe"], Literal["yolo"]], name: str) -> str:
+    return f"{Path(__file__).parent.parent.joinpath("models", folder, name)}"

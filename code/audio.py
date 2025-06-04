@@ -3,14 +3,13 @@ from enum import Enum
 from math import sqrt
 from pathlib import Path
 from runpy import run_path
-from threading import Thread
 from typing import Callable, ClassVar, Iterable, List, Optional, Sequence, Set, Tuple
 
 from pyo import Server, PyoObject, Sine, Pan, SigTo, midiToHz, hzToMidi, pa_get_output_devices  # type: ignore
-from channel import Channel, Closed
+from channel import Channel
 from detect import Gesture, Hand, Pose
 import measure
-from utility import catch, clamp, cut, debug
+from utility import clamp, cut, debug, run
 import vector
 
 
@@ -117,8 +116,7 @@ class Audio:
 
     def __init__(self):
         self._channel = Channel[_Message]()
-        self._thread = Thread(target=catch(_actor, Closed, ()), args=(self._channel,))
-        self._thread.start()
+        self._thread = run(_actor, self._channel)
 
     def __enter__(self):
         return self
@@ -170,7 +168,7 @@ def _secret(hand: Hand, hands: Sequence[Hand], skip: Set[Hand]) -> Optional[Soun
 def _sounds(hands: Sequence[Hand]) -> Iterable[Sound]:
     skip = set()
     for hand in hands:
-        if hand in skip or hand.frames < 2:
+        if hand in skip:
             continue
 
         secret = _secret(hand, hands, skip)
