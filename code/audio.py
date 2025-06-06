@@ -6,7 +6,7 @@ from runpy import run_path
 from typing import Callable, ClassVar, Iterable, List, Optional, Sequence, Set, Tuple
 
 from pyo import Server, PyoObject, Sine, Pan, SigTo, midiToHz, hzToMidi, pa_get_output_devices  # type: ignore
-from channel import Channel
+from cell import Cell
 from detect import Gesture, Hand, Pose
 import measure
 from utility import clamp, cut, debug, run
@@ -115,20 +115,20 @@ class Audio:
     """
 
     def __init__(self):
-        self._channel = Channel[_Message]()
-        self._thread = run(_actor, self._channel)
+        self._cell = Cell[_Message]()
+        self._thread = run(_actor, self._cell)
 
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        self._channel.close()
+        self._cell.close()
         self._thread.join()
 
     def send(
         self, hands: Sequence[Hand], poses: Sequence[Pose], mute: bool, reset: bool
     ):
-        self._channel.put((hands, poses, mute, reset))
+        self._cell.set((hands, poses, mute, reset))
 
 
 def _sound(
@@ -188,7 +188,7 @@ def _sounds(hands: Sequence[Hand]) -> Iterable[Sound]:
             )
 
 
-def _actor(channel: Channel[_Message]):
+def _actor(receive: Cell[_Message]):
     def factories() -> Iterable[Factory]:
         for file in sorted(
             Path(__file__).parent.parent.joinpath("instruments").iterdir(),
@@ -212,7 +212,7 @@ def _actor(channel: Channel[_Message]):
         _server.boot().start()
         while True:
             # TODO: Use the poses.
-            hands, poses, mute, reset = channel.get()
+            hands, poses, mute, reset = receive.pop()
 
             with measure.block("Audio"):
                 if reset:

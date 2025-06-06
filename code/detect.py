@@ -1,11 +1,9 @@
 from dataclasses import dataclass
-from enum import Enum
+from enum import IntEnum
 from functools import cached_property
 from pathlib import Path
 from typing import ClassVar, Iterable, Literal, Optional, Self, Sequence, Tuple, Union
-import cv2
 from mediapipe.tasks.python.components.containers.landmark import NormalizedLandmark
-from cv2 import cvtColor
 from cv2.typing import MatLike
 from mediapipe import Image, ImageFormat
 from mediapipe.tasks.python.core.base_options import BaseOptions
@@ -26,16 +24,24 @@ from mediapipe.tasks.python.vision.pose_landmarker import (
     PoseLandmarkerOptions,
     PoseLandmarksConnections,
 )
+import numpy
 from ultralytics import YOLO
 
-from channel import Channel
+from cell import Cell
 import measure
 from utility import run
 import vector
 from vector import Bound, Vector
 
+SQUARES = (
+    (False, False),
+    (False, True),
+    (True, False),
+    (True, True),
+)
 
-class Gesture(Enum):
+
+class Gesture(IntEnum):
     NONE = 0
     CLOSED_FIST = 1
     OPEN_PALM = 2
@@ -56,7 +62,7 @@ class Gesture(Enum):
             return Gesture.NONE
 
 
-class Handedness(Enum):
+class Handedness(IntEnum):
     NONE = 0
     LEFT = -1
     RIGHT = 1
@@ -107,9 +113,10 @@ class Landmark:
         return vector.magnitude(self.velocity)
 
     def update(self, landmark: Self) -> "Landmark":
+        position = vector.lerp(self.position, landmark.position, 0.75)
         return Landmark(
-            position=landmark.position,
-            velocity=vector.subtract(landmark.position, self.position),
+            position=position,
+            velocity=vector.subtract(position, self.position),
             visibility=landmark.visibility,
             presence=landmark.presence,
         )
@@ -224,6 +231,8 @@ class Finger(Composite):
 @dataclass(frozen=True)
 class Hand(Composite):
     DEFAULT: ClassVar[Self]
+    LEFT: ClassVar[Self]
+    RIGHT: ClassVar[Self]
     CONNECTIONS: ClassVar[Sequence[Tuple[int, int]]] = tuple(
         (connection.start, connection.end)
         for connection in HandLandmarksConnections.HAND_CONNECTIONS
@@ -356,6 +365,18 @@ class Hand(Composite):
 Hand.DEFAULT = Hand(
     landmarks=tuple(Landmark.DEFAULT for _ in range(21)),
     handedness=Handedness.NONE,
+    gesture=Gesture.NONE,
+)
+
+Hand.LEFT = Hand(
+    landmarks=tuple(Landmark.DEFAULT for _ in range(21)),
+    handedness=Handedness.LEFT,
+    gesture=Gesture.NONE,
+)
+
+Hand.RIGHT = Hand(
+    landmarks=tuple(Landmark.DEFAULT for _ in range(21)),
+    handedness=Handedness.RIGHT,
     gesture=Gesture.NONE,
 )
 
@@ -514,19 +535,30 @@ class Detector:
         hands=4,
         poses=2,
     ):
-        self._hands = Channel[Tuple[Image, int]](), Channel[Sequence[Hand]]()
-        self._poses = Channel[Tuple[Image, int]](), Channel[Sequence[Pose]]()
-        self._threads = (
-            run(_hands_actor, *self._hands, device, confidence, hands),
-            run(_poses_actor, *self._poses, device, confidence, poses),
+        self._hands = tuple(
+            (Cell[Tuple[MatLike, int]](), Cell[Sequence[Hand]]()) for _ in SQUARES
+        )
+        self._poses = tuple(
+            (Cell[Tuple[MatLike, int]](), Cell[Sequence[Pose]]()) for _ in SQUARES
+        )
+        self._threads = tuple(
+            run(_hands_actor, receive, send, device, confidence, hands, square)
+            for (receive, send), square in zip(self._hands, SQUARES)
+        ) + tuple(
+            run(_poses_actor, receive, send, device, confidence, poses, square)
+            for (receive, send), square in zip(self._poses, SQUARES)
         )
 
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        self._hands[0].close()
-        self._poses[0].close()
+        for pair in self._hands:
+            pair[0].close()
+            pair[1].close()
+        for pair in self._poses:
+            pair[0].close()
+            pair[1].close()
         for thread in self._threads:
             thread.join()
 
@@ -534,11 +566,12 @@ class Detector:
         self, frame: MatLike, time: int
     ) -> Tuple[Sequence[Hand], Sequence[Pose]]:
         with measure.block("Detect"):
-            image = Image(ImageFormat.SRGB, cvtColor(frame, cv2.COLOR_BGR2RGB))
-            self._hands[0].put((image, time))
-            self._poses[0].put((image, time))
-            hands = self._hands[1].get()
-            poses = self._poses[1].get()
+            for cell, _ in self._hands:
+                cell.set((frame, time))
+            for cell, _ in self._poses:
+                cell.set((frame, time))
+            hands = tuple(hand for (_, cell) in self._hands for hand in cell.pop())
+            poses = tuple(poses for (_, cell) in self._poses for poses in cell.pop())
             return hands, poses
 
     @cached_property
@@ -553,11 +586,12 @@ class Detector:
 
 
 def _hands_actor(
-    receive: Channel[Tuple[Image, int]],
-    send: Channel[Sequence[Hand]],
+    receive: Cell[Tuple[MatLike, int]],
+    send: Cell[Sequence[Hand]],
     device: BaseOptions.Delegate,
     confidence: float,
     hands: int,
+    square: Tuple[bool, bool],
 ):
 
     def load(
@@ -596,10 +630,11 @@ def _hands_actor(
 
     with load(device, confidence, hands) as model:
         while True:
-            image, time = receive.get()
+            frame, time = receive.pop()
             with measure.block("Hands"):
+                image = Image(ImageFormat.SRGB, _region(frame, *square))
                 result = model.recognize_for_video(image, time)
-                send.put(
+                send.set(
                     tuple(
                         Hand.new(landmarks, handedness[0], gestures[0])
                         for landmarks, handedness, gestures in zip(
@@ -610,11 +645,12 @@ def _hands_actor(
 
 
 def _poses_actor(
-    receive: Channel[Tuple[Image, int]],
-    send: Channel[Sequence[Pose]],
+    receive: Cell[Tuple[MatLike, int]],
+    send: Cell[Sequence[Pose]],
     device: BaseOptions.Delegate,
     confidence: float,
     poses: int,
+    square: Tuple[bool, bool],
 ):
 
     def load(
@@ -638,10 +674,19 @@ def _poses_actor(
 
     with load(device, confidence, poses) as model:
         while True:
-            image, time = receive.get()
+            frame, time = receive.pop()
             with measure.block("Poses"):
+                image = Image(ImageFormat.SRGB, _region(frame, *square))
                 result = model.detect_for_video(image, time)
-                send.put(tuple(map(Pose.new, result.pose_landmarks)))
+                send.set(tuple(map(Pose.new, result.pose_landmarks)))
+
+
+def _region(frame: MatLike, bottom: bool, left: bool, size: float = 2.0 / 3.0):
+    height, width, _ = frame.shape
+    size = int(2.0 * max(width, height) / 3.0)
+    x = (0, size) if left else (width - size, width)
+    y = (0, size) if bottom else (height - size, height)
+    return numpy.array(frame[y[0] : y[1], x[0] : x[1], :])
 
 
 def _model_path(folder: Union[Literal["mediapipe"], Literal["yolo"]], name: str) -> str:

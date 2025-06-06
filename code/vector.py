@@ -1,11 +1,21 @@
 from math import acos, degrees, inf, sqrt
 from typing import Tuple
 
+import utility
+
 Vector = Tuple[float, float, float]
 Bound = Tuple[Vector, Vector]
 ZERO = (0.0, 0.0, 0.0)
 ONE = (1.0, 1.0, 1.0)
 INFINITY = (inf, inf, inf)
+
+
+def lerp(source: Vector, target: Vector, time: float) -> Vector:
+    return (
+        utility.lerp(source[0], target[0], time),
+        utility.lerp(source[1], target[1], time),
+        utility.lerp(source[2], target[2], time),
+    )
 
 
 def distance(*vectors: Vector, square: bool = False) -> float:

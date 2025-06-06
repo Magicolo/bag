@@ -1,6 +1,6 @@
 from threading import Thread
 from typing import Callable, Type, TypeVar, overload
-from channel import Closed
+from cell import Closed
 
 _T = TypeVar("_T")
 _T0 = TypeVar("_T0")

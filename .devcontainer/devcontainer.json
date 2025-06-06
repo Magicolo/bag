@@ -60,8 +60,9 @@
     ],
     "runArgs": [
         "--gpus=all",
+        "--privileged",
         "--device=/dev/video0",
-        // "--device=/dev/video1",
+        "--device=/dev/video1",
         "--device=/dev/bus/usb",
         "--device=/dev/snd",
         "--device=/dev/dri:/dev/dri",

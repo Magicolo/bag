@@ -1,7 +1,9 @@
 from typing import Tuple
 
 from cv2 import (
+    COLOR_RGB2BGR,
     WINDOW_NORMAL,
+    cvtColor,
     destroyWindow,
     imshow,
     namedWindow,
@@ -31,7 +33,9 @@ class Window:
 
     def show(self, frame: MatLike) -> Tuple[int, bool]:
         with measure.block("Window"):
-            imshow(self._name, resize(frame, (self._width, self._height)))
+            frame = cvtColor(frame, COLOR_RGB2BGR, frame)
+            frame = resize(frame, (self._width, self._height), frame)
+            imshow(self._name, frame)
             key = pollKey()
             change = key != self._last
             self._last = key
