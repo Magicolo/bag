@@ -18,7 +18,7 @@ _, height, width, _ = debug(input.shape)
 outputs = [output.name for output in session.get_outputs()][:2]
 
 with Camera() as camera, Window() as window:
-    for frame, time in camera.frames():
+    for frame, time in camera.frame():
         sized_frame = resize(frame, (width, height))
         colored_frame = cvtColor(sized_frame, COLOR_BGR2RGB)
         divided_frame = numpy.divide(colored_frame, 255.0, dtype=numpy.float32)

@@ -29,6 +29,11 @@ def lerp(source: float, target: float, time: float) -> float:
 
 
 @overload
+def run(actor: Callable[[], _T]) -> Thread:
+    (...)
+
+
+@overload
 def run(actor: Callable[[_T0], _T], argument0: _T0) -> Thread:
     (...)
 

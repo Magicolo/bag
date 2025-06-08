@@ -6,8 +6,9 @@ from runpy import run_path
 from typing import Callable, ClassVar, Iterable, List, Optional, Sequence, Set, Tuple
 
 from pyo import Server, PyoObject, Sine, Pan, SigTo, midiToHz, hzToMidi, pa_get_output_devices  # type: ignore
-from cell import Cell
-from detect import Gesture, Hand, Pose
+from cell import Cell, Cells
+from window import Inputs
+from detect import Gesture, Hand, Player, Pose
 import measure
 from utility import clamp, cut, debug, run
 import vector
@@ -114,21 +115,83 @@ class Audio:
     POWER
     """
 
-    def __init__(self):
-        self._cell = Cell[_Message]()
-        self._thread = run(_actor, self._cell)
+    def __init__(
+        self, players: Cells[Sequence[Player]], inputs: Cells[Inputs], stop: Cell[None]
+    ):
+        self._stop = stop
+        self._players = players
+        self._inputs = inputs
+        self._thread = run(self._run)
 
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        self._cell.close()
         self._thread.join()
 
-    def send(
-        self, hands: Sequence[Hand], poses: Sequence[Pose], mute: bool, reset: bool
+    def _run(self):
+        _server = Server(
+            audio="pulse", sr=48000, duplex=0, ichnls=0, nchnls=_CHANNELS, buffersize=64
+        )
+        _instruments: List[Instrument] = []
+        _factories = tuple(_load())
+        _current = Inputs.DEFAULT
+
+        try:
+            with self._players.spawn() as _players, self._inputs.spawn() as _inputs:
+                _server.setInOutDevice(_device("usb audio", "analog"))
+                _server.boot().start()
+
+                for _, players, _current in zip(
+                    self._stop.gets(),
+                    _players.pops(),
+                    map(lambda inputs: inputs or _current, _inputs.try_pops()),
+                ):
+                    with measure.block("Audio"):
+                        hands = tuple(
+                            hand for player in players for hand in player.hands
+                        )
+
+                        if _current.reset:
+                            _factories = tuple(_load())
+                            for instrument in _instruments:
+                                instrument.stop()
+                            _instruments.clear()
+                        elif _current.mute:
+                            for instrument in _instruments:
+                                instrument.fade(0)
+                        else:
+                            sounds = tuple(_sounds(hands))
+                            while len(_instruments) < len(sounds):
+                                index = len(_instruments)
+                                factory = _factories[(index // 5) % len(_factories)]
+                                _instruments.append(Instrument(factory))
+
+                            attenuate = sqrt(clamp(1 / (len(sounds) + 1))) / 100
+                            for instrument, sound in zip(_instruments, sounds):
+                                frequency = _note(sound.frequency, sound.notes)
+                                instrument.glide(sound.glide)
+                                instrument.shift(frequency)
+                                instrument.pan(sound.pan)
+                                instrument.fade(sound.amplitude * attenuate)
+
+                            for instrument in _instruments[len(sounds) :]:
+                                instrument.fade(0)
+        finally:
+            _server.stop()
+
+
+def _load() -> Iterable[Factory]:
+    for file in sorted(
+        Path(__file__).parent.parent.joinpath("instruments").iterdir(),
+        key=lambda file: file.stem,
     ):
-        self._cell.set((hands, poses, mute, reset))
+        if file.is_file() and file.suffix == ".py":
+            name = file.stem
+            stamp = file.stat().st_mtime
+            new = run_path(f"{file}").get("new", None)
+            if new:
+                yield Factory(new=new, name=name, stamp=stamp)
 
 
 def _sound(
@@ -186,62 +249,6 @@ def _sounds(hands: Sequence[Hand]) -> Iterable[Sound]:
                 hand.gesture == Gesture.ILOVEYOU,
                 Notes.NATURAL,
             )
-
-
-def _actor(receive: Cell[_Message]):
-    def factories() -> Iterable[Factory]:
-        for file in sorted(
-            Path(__file__).parent.parent.joinpath("instruments").iterdir(),
-            key=lambda file: file.stem,
-        ):
-            if file.is_file() and file.suffix == ".py":
-                name = file.stem
-                stamp = file.stat().st_mtime
-                new = run_path(f"{file}").get("new", None)
-                if new:
-                    yield Factory(new=new, name=name, stamp=stamp)
-
-    _server = Server(
-        audio="pulse", sr=48000, duplex=0, ichnls=0, nchnls=_CHANNELS, buffersize=64
-    )
-    _instruments: List[Instrument] = []
-    _factories = tuple(factories())
-
-    try:
-        _server.setInOutDevice(_device("usb audio", "analog"))
-        _server.boot().start()
-        while True:
-            # TODO: Use the poses.
-            hands, poses, mute, reset = receive.pop()
-
-            with measure.block("Audio"):
-                if reset:
-                    _factories = tuple(factories())
-                    for instrument in _instruments:
-                        instrument.stop()
-                    _instruments.clear()
-                elif mute:
-                    for instrument in _instruments:
-                        instrument.fade(0)
-                else:
-                    sounds = tuple(_sounds(hands))
-                    while len(_instruments) < len(sounds):
-                        index = len(_instruments)
-                        factory = _factories[(index // 5) % len(_factories)]
-                        _instruments.append(Instrument(factory))
-
-                    attenuate = sqrt(clamp(1 / (len(sounds) + 1))) / 100
-                    for instrument, sound in zip(_instruments, sounds):
-                        frequency = _note(sound.frequency, sound.notes)
-                        instrument.glide(sound.glide)
-                        instrument.shift(frequency)
-                        instrument.pan(sound.pan)
-                        instrument.fade(sound.amplitude * attenuate)
-
-                    for instrument in _instruments[len(sounds) :]:
-                        instrument.fade(0)
-    finally:
-        _server.stop()
 
 
 def _device(*patterns: str) -> Optional[int]:

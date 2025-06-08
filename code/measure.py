@@ -47,7 +47,7 @@ def iterate(key: str, iterable: Iterable[_T]) -> Iterable[_T]:
     while True:
         with block(key):
             value = next(iterator)
-        yield value
+            yield value
 
 
 def flush():

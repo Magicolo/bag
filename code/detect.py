@@ -1,8 +1,19 @@
+from copy import copy
 from dataclasses import dataclass
 from enum import IntEnum
 from functools import cached_property
 from pathlib import Path
-from typing import ClassVar, Iterable, Literal, Optional, Self, Sequence, Tuple, Union
+from typing import (
+    ClassVar,
+    Iterable,
+    Literal,
+    Optional,
+    Self,
+    Sequence,
+    Set,
+    Tuple,
+    Union,
+)
 from mediapipe.tasks.python.components.containers.landmark import NormalizedLandmark
 from cv2.typing import MatLike
 from mediapipe import Image, ImageFormat
@@ -24,21 +35,12 @@ from mediapipe.tasks.python.vision.pose_landmarker import (
     PoseLandmarkerOptions,
     PoseLandmarksConnections,
 )
-import numpy
-from ultralytics import YOLO
 
-from cell import Cell
+from cell import Cell, Cells
 import measure
 from utility import run
 import vector
 from vector import Bound, Vector
-
-SQUARES = (
-    (False, False),
-    (False, True),
-    (True, False),
-    (True, True),
-)
 
 
 class Gesture(IntEnum):
@@ -527,167 +529,204 @@ class Pose(Composite):
 Pose.DEFAULT = Pose(landmarks=tuple(Landmark.DEFAULT for _ in range(33)))
 
 
+@dataclass
+class Player:
+    pose: Pose
+    hands: Tuple[Hand, Hand]
+
+
 class Detector:
     def __init__(
         self,
+        frame: Cells[Tuple[MatLike, int]],
+        stop: Cell[None],
+        players=2,
         device: BaseOptions.Delegate = BaseOptions.Delegate.GPU,
         confidence: float = 0.5,
-        hands=4,
-        poses=2,
     ):
-        self._hands = tuple(
-            (Cell[Tuple[MatLike, int]](), Cell[Sequence[Hand]]()) for _ in SQUARES
-        )
-        self._poses = tuple(
-            (Cell[Tuple[MatLike, int]](), Cell[Sequence[Pose]]()) for _ in SQUARES
-        )
-        self._threads = tuple(
-            run(_hands_actor, receive, send, device, confidence, hands, square)
-            for (receive, send), square in zip(self._hands, SQUARES)
-        ) + tuple(
-            run(_poses_actor, receive, send, device, confidence, poses, square)
-            for (receive, send), square in zip(self._poses, SQUARES)
+        self._frame = frame
+        self._count = players
+        self._device = device
+        self._confidence = confidence
+        self._stop = stop
+        self._hands = Cells[Sequence[Hand]]()
+        self._poses = Cells[Sequence[Pose]]()
+        self._players = Cells[Sequence[Player]]()
+        self._threads = (
+            run(self._run_hands),
+            run(self._run_poses),
+            run(self._run_players),
         )
 
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        for pair in self._hands:
-            pair[0].close()
-            pair[1].close()
-        for pair in self._poses:
-            pair[0].close()
-            pair[1].close()
+        self._hands.close()
+        self._poses.close()
+        self._players.close()
         for thread in self._threads:
             thread.join()
 
-    def detect(
-        self, frame: MatLike, time: int
-    ) -> Tuple[Sequence[Hand], Sequence[Pose]]:
-        with measure.block("Detect"):
-            for cell, _ in self._hands:
-                cell.set((frame, time))
-            for cell, _ in self._poses:
-                cell.set((frame, time))
-            hands = tuple(hand for (_, cell) in self._hands for hand in cell.pop())
-            poses = tuple(poses for (_, cell) in self._poses for poses in cell.pop())
-            return hands, poses
+    @property
+    def hands(self) -> Cells[Sequence[Hand]]:
+        return self._hands
 
-    @cached_property
-    def _yolo_pose(self) -> YOLO:
-        return YOLO(_model_path("yolo", "yolo11n-pose.pt")).cuda()
+    @property
+    def poses(self) -> Cells[Sequence[Pose]]:
+        return self._poses
 
-    @cached_property
-    def _yolo_object(self) -> YOLO:
-        model = YOLO(_model_path("yolo", "yolo12l.pt")).cuda()
-        model.fuse()
-        return model
+    @property
+    def players(self) -> Cells[Sequence[Player]]:
+        return self._players
 
-
-def _hands_actor(
-    receive: Cell[Tuple[MatLike, int]],
-    send: Cell[Sequence[Hand]],
-    device: BaseOptions.Delegate,
-    confidence: float,
-    hands: int,
-    square: Tuple[bool, bool],
-):
-
-    def load(
-        device: BaseOptions.Delegate, confidence: float, hands: int
-    ) -> GestureRecognizer:
+    def _load_hands(self) -> GestureRecognizer:
         return GestureRecognizer.create_from_options(
             GestureRecognizerOptions(
                 base_options=BaseOptions(
                     model_asset_path=_model_path(
                         "mediapipe", "gesture_recognizer.task"
                     ),
-                    delegate=device,
+                    delegate=self._device,
                 ),
                 running_mode=VisionTaskRunningMode.VIDEO,
-                min_tracking_confidence=confidence,
-                min_hand_detection_confidence=confidence,
-                min_hand_presence_confidence=confidence,
-                num_hands=hands,
+                min_tracking_confidence=self._confidence,
+                min_hand_detection_confidence=self._confidence,
+                min_hand_presence_confidence=self._confidence,
+                num_hands=self._count * 2,
             )
         )
 
-    # def load(device: BaseOptions.Delegate) -> HandLandmarker:
-    #     return HandLandmarker.create_from_options(
-    #         HandLandmarkerOptions(
-    #             base_options=BaseOptions(
-    #                 model_asset_path=_model_path("mediapipe", "hand_landmarker.task"),
-    #                 delegate=device,
-    #             ),
-    #             running_mode=VisionTaskRunningMode.VIDEO,
-    #             min_tracking_confidence=CONFIDENCE,
-    #             min_hand_detection_confidence=CONFIDENCE,
-    #             min_hand_presence_confidence=CONFIDENCE,
-    #             num_hands=_HANDS,
-    #         )
-    #     )
-
-    with load(device, confidence, hands) as model:
-        while True:
-            frame, time = receive.pop()
-            with measure.block("Hands"):
-                image = Image(ImageFormat.SRGB, _region(frame, *square))
-                result = model.recognize_for_video(image, time)
-                send.set(
-                    tuple(
-                        Hand.new(landmarks, handedness[0], gestures[0])
-                        for landmarks, handedness, gestures in zip(
-                            result.hand_landmarks, result.handedness, result.gestures
-                        )
-                    )
-                )
-
-
-def _poses_actor(
-    receive: Cell[Tuple[MatLike, int]],
-    send: Cell[Sequence[Pose]],
-    device: BaseOptions.Delegate,
-    confidence: float,
-    poses: int,
-    square: Tuple[bool, bool],
-):
-
-    def load(
-        device: BaseOptions.Delegate, confidence: float, poses: int
-    ) -> PoseLandmarker:
+    def _load_poses(self) -> PoseLandmarker:
         return PoseLandmarker.create_from_options(
             PoseLandmarkerOptions(
                 base_options=BaseOptions(
                     model_asset_path=_model_path(
                         "mediapipe", "pose_landmarker_full.task"
                     ),
-                    delegate=device,
+                    delegate=self._device,
                 ),
                 running_mode=VisionTaskRunningMode.VIDEO,
-                min_pose_detection_confidence=confidence,
-                min_pose_presence_confidence=confidence,
-                min_tracking_confidence=confidence,
-                num_poses=poses,
+                min_pose_detection_confidence=self._confidence,
+                min_pose_presence_confidence=self._confidence,
+                min_tracking_confidence=self._confidence,
+                num_poses=self._count,
             )
         )
 
-    with load(device, confidence, poses) as model:
-        while True:
-            frame, time = receive.pop()
-            with measure.block("Poses"):
-                image = Image(ImageFormat.SRGB, _region(frame, *square))
-                result = model.detect_for_video(image, time)
-                send.set(tuple(map(Pose.new, result.pose_landmarks)))
+    def _run_hands(self):
+        with self._load_hands() as _model, self._frame.spawn() as _frame:
+            for _, (frame, time) in zip(self._stop.gets(), _frame.pops()):
+                image = Image(ImageFormat.SRGB, frame)
+                with measure.block("Hands"):
+                    result = _model.recognize_for_video(image, time)
+                    self._hands.set(
+                        tuple(
+                            Hand.new(landmarks, handedness[0], gestures[0])
+                            for landmarks, handedness, gestures in zip(
+                                result.hand_landmarks,
+                                result.handedness,
+                                result.gestures,
+                            )
+                        )
+                    )
 
+    def _run_poses(self):
+        with self._load_poses() as _model, self._frame.spawn() as _frame:
+            for _, (frame, time) in zip(self._stop.gets(), _frame.pops()):
+                image = Image(ImageFormat.SRGB, frame)
+                with measure.block("Poses"):
+                    result = _model.detect_for_video(image, time)
+                    self._poses.set(tuple(map(Pose.new, result.pose_landmarks)))
 
-def _region(frame: MatLike, bottom: bool, left: bool, size: float = 2.0 / 3.0):
-    height, width, _ = frame.shape
-    size = int(2.0 * max(width, height) / 3.0)
-    x = (0, size) if left else (width - size, width)
-    y = (0, size) if bottom else (height - size, height)
-    return numpy.array(frame[y[0] : y[1], x[0] : x[1], :])
+    def _run_players(self):
+        _players = tuple(
+            Player(Pose.DEFAULT, (Hand.LEFT, Hand.RIGHT)) for _ in range(self._count)
+        )
+
+        with self._hands.spawn() as _hands, self._poses.spawn() as _poses:
+            for _, hands, poses in zip(self._stop.gets(), _hands.pops(), _poses.pops()):
+                with measure.block("Players"):
+                    hand_indices: Tuple[Set[int], Set[Tuple[int, int]]] = set(), set()
+                    hand_distances = sorted(
+                        (
+                            (p, o, n, old.distance(new, square=True))
+                            for p, player in enumerate(_players)
+                            for o, old in enumerate(player.hands)
+                            for n, new in enumerate(hands)
+                            if new.handedness == old.handedness
+                        ),
+                        key=lambda pair: (pair[3], pair[0]),
+                    )
+                    for p, o, n, _ in hand_distances:
+                        if n in hand_indices[0]:
+                            continue
+                        else:
+                            hand_indices[0].add(n)
+                            hand_indices[1].add((p, o))
+
+                        player = _players[p]
+                        old = player.hands[o]
+                        new = hands[n]
+                        if o == 0:
+                            player.hands = (old.update(new), player.hands[1])
+                        else:
+                            player.hands = (player.hands[0], old.update(new))
+
+                    pose_indices: Tuple[Set[int], Set[int]] = set(), set()
+                    pose_distances = sorted(
+                        (
+                            (p, n, player.pose.distance(pose, square=True))
+                            for p, player in enumerate(_players)
+                            for n, pose in enumerate(poses)
+                        ),
+                        key=lambda pair: (pair[2], pair[0]),
+                    )
+                    for p, n, _ in pose_distances:
+                        if n in pose_indices[0]:
+                            continue
+                        else:
+                            pose_indices[0].add(n)
+                            pose_indices[1].add(p)
+
+                        _players[p].pose = _players[p].pose.update(poses[n])
+
+                    for p, player in enumerate(_players):
+                        if p in pose_indices[1]:
+                            for o, hand in enumerate(player.hands):
+                                if (p, o) in hand_indices[1]:
+                                    continue
+                                else:
+                                    hand_indices[1].add((p, o))
+
+                                motion = vector.subtract(
+                                    player.pose.wrists[o].position, hand.wrist.position
+                                )
+                                if o == 0:
+                                    player.hands = (hand.move(motion), player.hands[1])
+                                else:
+                                    old = player.hands[1]
+                                    player.hands = (player.hands[0], hand.move(motion))
+                    self._players.set(tuple(copy(player) for player in _players))
 
 
 def _model_path(folder: Union[Literal["mediapipe"], Literal["yolo"]], name: str) -> str:
     return f"{Path(__file__).parent.parent.joinpath("models", folder, name)}"
+
+
+# def _region(frame: MatLike, x: float, y: float, size: float = 2.0 / 3.0):
+#     height, width, _ = frame.shape
+#     size = int(2.0 * max(width, height) / 3.0)
+#     x = (0, size) if y else (width - size, width)
+#     y = (0, size) if x else (height - size, height)
+#     return numpy.array(frame[y[0] : y[1], x[0] : x[1], :])
+
+# @cached_property
+# def _yolo_pose(self) -> YOLO:
+#     return YOLO(_model_path("yolo", "yolo11n-pose.pt")).cuda()
+
+# @cached_property
+# def _yolo_object(self) -> YOLO:
+#     model = YOLO(_model_path("yolo", "yolo12l.pt")).cuda()
+#     model.fuse()
+#     return model
