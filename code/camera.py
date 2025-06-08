@@ -16,14 +16,13 @@ from cv2 import (
 )
 from cv2.typing import MatLike
 
-from cell import Cell, Cells
+from cell import Cells
 import measure
 from utility import run
 
 
 class Camera:
-    def __init__(self, stop: Cell[None]):
-        self._stop = stop
+    def __init__(self):
         self._frame = Cells[Tuple[MatLike, int]]()
         self._thread = run(self._run)
 
@@ -32,7 +31,6 @@ class Camera:
 
     def __exit__(self, exc_type, exc_value, traceback):
         self._frame.close()
-        self._thread.join()
 
     @property
     def frame(self) -> Cells[Tuple[MatLike, int]]:
@@ -50,7 +48,7 @@ class Camera:
                 f"=> Camera Resolution: {int(_camera.get(CAP_PROP_FRAME_WIDTH))}x{int(_camera.get(CAP_PROP_FRAME_HEIGHT))}"
             )
 
-            for _ in zip(self._stop.gets(), iter(_camera.isOpened, False)):
+            while _camera.isOpened():
                 with measure.block("Camera"):
                     success, frame = _camera.read()
                     if success:

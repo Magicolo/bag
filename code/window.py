@@ -16,7 +16,7 @@ from cv2 import (
 )
 from cv2.typing import MatLike, Scalar
 
-from cell import Cell, Cells
+from cell import Cells
 from utility import run
 from detect import Hand, Landmark, Player, Pose
 import measure
@@ -42,7 +42,6 @@ class Window:
         players: Cells[Sequence[Player]],
         hands: Cells[Sequence[Hand]],
         poses: Cells[Sequence[Pose]],
-        stop: Cell[None],
         name="La Brousse À Gigante",
         width=640,
         height=480,
@@ -51,7 +50,6 @@ class Window:
         self._players = players
         self._hands = hands
         self._poses = poses
-        self._stop = stop
         self._name = name
         self._width = width
         self._height = height
@@ -63,7 +61,6 @@ class Window:
 
     def __exit__(self, exc_type, exc_value, traceback):
         self._inputs.close()
-        self._thread.join()
 
     @property
     def inputs(self) -> Cells[Inputs]:
@@ -79,7 +76,7 @@ class Window:
             resizeWindow(self._name, self._width, self._height)
 
             with self._frame.spawn() as _frame, self._players.spawn() as _players, self._hands.spawn() as _hands, self._poses.spawn() as _poses:
-                for _, (frame, _) in zip(self._stop.gets(), _frame.pops()):
+                for frame, _ in _frame.pops():
                     if _draw:
                         players, hands, poses = (
                             _players.pop(),

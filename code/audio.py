@@ -6,7 +6,7 @@ from runpy import run_path
 from typing import Callable, ClassVar, Iterable, List, Optional, Sequence, Set, Tuple
 
 from pyo import Server, PyoObject, Sine, Pan, SigTo, midiToHz, hzToMidi, pa_get_output_devices  # type: ignore
-from cell import Cell, Cells
+from cell import Cells
 from window import Inputs
 from detect import Gesture, Hand, Player, Pose
 import measure
@@ -115,10 +115,7 @@ class Audio:
     POWER
     """
 
-    def __init__(
-        self, players: Cells[Sequence[Player]], inputs: Cells[Inputs], stop: Cell[None]
-    ):
-        self._stop = stop
+    def __init__(self, players: Cells[Sequence[Player]], inputs: Cells[Inputs]):
         self._players = players
         self._inputs = inputs
         self._thread = run(self._run)
@@ -127,7 +124,7 @@ class Audio:
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        self._thread.join()
+        pass
 
     def _run(self):
         _server = Server(
@@ -142,8 +139,7 @@ class Audio:
                 _server.setInOutDevice(_device("usb audio", "analog"))
                 _server.boot().start()
 
-                for _, players, _current in zip(
-                    self._stop.gets(),
+                for players, _current in zip(
                     _players.pops(),
                     map(lambda inputs: inputs or _current, _inputs.try_pops()),
                 ):

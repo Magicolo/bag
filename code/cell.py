@@ -125,7 +125,6 @@ class Cells(Generic[_T]):
         with self._lock:
             for cell in self._cells:
                 cell.close()
-            self._cells.clear()
 
     def spawn(self, value: _T = _EMPTY) -> Cell[_T]:
         with self._lock:

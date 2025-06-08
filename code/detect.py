@@ -36,7 +36,7 @@ from mediapipe.tasks.python.vision.pose_landmarker import (
     PoseLandmarksConnections,
 )
 
-from cell import Cell, Cells
+from cell import Cells
 import measure
 from utility import run
 import vector
@@ -539,7 +539,6 @@ class Detector:
     def __init__(
         self,
         frame: Cells[Tuple[MatLike, int]],
-        stop: Cell[None],
         players=2,
         device: BaseOptions.Delegate = BaseOptions.Delegate.GPU,
         confidence: float = 0.5,
@@ -548,7 +547,6 @@ class Detector:
         self._count = players
         self._device = device
         self._confidence = confidence
-        self._stop = stop
         self._hands = Cells[Sequence[Hand]]()
         self._poses = Cells[Sequence[Pose]]()
         self._players = Cells[Sequence[Player]]()
@@ -565,8 +563,6 @@ class Detector:
         self._hands.close()
         self._poses.close()
         self._players.close()
-        for thread in self._threads:
-            thread.join()
 
     @property
     def hands(self) -> Cells[Sequence[Hand]]:
@@ -616,7 +612,7 @@ class Detector:
 
     def _run_hands(self):
         with self._load_hands() as _model, self._frame.spawn() as _frame:
-            for _, (frame, time) in zip(self._stop.gets(), _frame.pops()):
+            for frame, time in _frame.pops():
                 image = Image(ImageFormat.SRGB, frame)
                 with measure.block("Hands"):
                     result = _model.recognize_for_video(image, time)
@@ -633,7 +629,7 @@ class Detector:
 
     def _run_poses(self):
         with self._load_poses() as _model, self._frame.spawn() as _frame:
-            for _, (frame, time) in zip(self._stop.gets(), _frame.pops()):
+            for frame, time in _frame.pops():
                 image = Image(ImageFormat.SRGB, frame)
                 with measure.block("Poses"):
                     result = _model.detect_for_video(image, time)
@@ -645,7 +641,7 @@ class Detector:
         )
 
         with self._hands.spawn() as _hands, self._poses.spawn() as _poses:
-            for _, hands, poses in zip(self._stop.gets(), _hands.pops(), _poses.pops()):
+            for hands, poses in zip(_hands.pops(), _poses.pops()):
                 with measure.block("Players"):
                     hand_indices: Tuple[Set[int], Set[Tuple[int, int]]] = set(), set()
                     hand_distances = sorted(
