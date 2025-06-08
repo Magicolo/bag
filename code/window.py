@@ -78,28 +78,28 @@ class Window:
             with self._inputs as _send, self._frame.spawn() as _frame, self._players.spawn() as _players, self._hands.spawn() as _hands, self._poses.spawn() as _poses:
                 for frame, _ in _frame.pops():
                     if _draw:
-                        players, hands, poses = (
+                        _, hands, poses = (
                             _players.pop(),
                             _hands.pop(),
                             _poses.pop(),
                         )
                         with measure.block("Draw"):
-                            for player in players:
-                                for hand in player.hands:
-                                    frame = _draw_landmarks(
-                                        frame,
-                                        hand.landmarks,
-                                        Hand.CONNECTIONS,
-                                        (0, 255, 0),
-                                        2,
-                                    )
-                                frame = _draw_landmarks(
-                                    frame,
-                                    player.pose.landmarks,
-                                    Pose.CONNECTIONS,
-                                    (0, 255, 0),
-                                    2,
-                                )
+                            # for player in players:
+                            #     for hand in player.hands:
+                            #         frame = _draw_landmarks(
+                            #             frame,
+                            #             hand.landmarks,
+                            #             Hand.CONNECTIONS,
+                            #             (0, 255, 0),
+                            #             2,
+                            #         )
+                            #     frame = _draw_landmarks(
+                            #         frame,
+                            #         player.pose.landmarks,
+                            #         Pose.CONNECTIONS,
+                            #         (0, 255, 0),
+                            #         2,
+                            #     )
 
                             for hand in hands:
                                 frame = _draw_landmarks(

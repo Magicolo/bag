@@ -138,26 +138,28 @@ class Audio:
         )
         _instruments: List[Instrument] = []
         _factories = tuple(_load())
-        _current = Inputs.DEFAULT
+        _old = (tuple(), Inputs.DEFAULT)
 
         try:
             with self._hands.spawn() as _hands, self._inputs.spawn() as _inputs:
                 _server.setInOutDevice(_device("usb audio", "analog"))
                 _server.boot().start()
 
-                for hands, _current in zip(
-                    _hands.pops(),
-                    map(lambda inputs: inputs or _current, _inputs.try_pops()),
-                ):
-                    with measure.block("Audio"):
-                        hands = tuple(hand for hand in hands)
+                for hands, inputs in zip(_hands.pops(), _inputs.try_pops()):
+                    add = tuple(Hand.DEFAULT for _ in range(len(hands) - len(_old[0])))
+                    hands = tuple(
+                        old.update(new) for old, new in zip((*_old[0], *add), hands)
+                    )
+                    inputs = inputs or _old[1]
+                    _old = (hands, inputs)
 
-                        if _current.reset:
+                    with measure.block("Audio"):
+                        if inputs.reset:
                             _factories = tuple(_load())
                             for instrument in _instruments:
                                 instrument.stop()
                             _instruments.clear()
-                        elif _current.mute:
+                        elif inputs.mute:
                             for instrument in _instruments:
                                 instrument.fade(0)
                         else:
