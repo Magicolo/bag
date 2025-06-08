@@ -8,7 +8,7 @@ from typing import Callable, ClassVar, Iterable, List, Optional, Sequence, Set, 
 from pyo import Server, PyoObject, Sine, Pan, SigTo, midiToHz, hzToMidi, pa_get_output_devices  # type: ignore
 from cell import Cells
 from window import Inputs
-from detect import Gesture, Hand, Player, Pose
+from detect import Gesture, Hand, Pose
 import measure
 from utility import clamp, cut, debug, run
 import vector
@@ -115,8 +115,14 @@ class Audio:
     POWER
     """
 
-    def __init__(self, players: Cells[Sequence[Player]], inputs: Cells[Inputs]):
-        self._players = players
+    def __init__(
+        self,
+        hands: Cells[Sequence[Hand]],
+        poses: Cells[Sequence[Pose]],
+        inputs: Cells[Inputs],
+    ):
+        self._hands = hands
+        self._poses = poses
         self._inputs = inputs
         self._thread = run(self._run)
 
@@ -135,18 +141,16 @@ class Audio:
         _current = Inputs.DEFAULT
 
         try:
-            with self._players.spawn() as _players, self._inputs.spawn() as _inputs:
+            with self._hands.spawn() as _hands, self._inputs.spawn() as _inputs:
                 _server.setInOutDevice(_device("usb audio", "analog"))
                 _server.boot().start()
 
-                for players, _current in zip(
-                    _players.pops(),
+                for hands, _current in zip(
+                    _hands.pops(),
                     map(lambda inputs: inputs or _current, _inputs.try_pops()),
                 ):
                     with measure.block("Audio"):
-                        hands = tuple(
-                            hand for player in players for hand in player.hands
-                        )
+                        hands = tuple(hand for hand in hands)
 
                         if _current.reset:
                             _factories = tuple(_load())
@@ -163,7 +167,7 @@ class Audio:
                                 factory = _factories[(index // 5) % len(_factories)]
                                 _instruments.append(Instrument(factory))
 
-                            attenuate = sqrt(clamp(1 / (len(sounds) + 1))) / 100
+                            attenuate = sqrt(clamp(1 / (len(sounds) + 1))) / 10
                             for instrument, sound in zip(_instruments, sounds):
                                 frequency = _note(sound.frequency, sound.notes)
                                 instrument.glide(sound.glide)

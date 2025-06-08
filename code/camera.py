@@ -48,16 +48,17 @@ class Camera:
                 f"=> Camera Resolution: {int(_camera.get(CAP_PROP_FRAME_WIDTH))}x{int(_camera.get(CAP_PROP_FRAME_HEIGHT))}"
             )
 
-            while _camera.isOpened():
-                with measure.block("Camera"):
-                    success, frame = _camera.read()
-                    if success:
-                        time = int(_camera.get(CAP_PROP_POS_MSEC))
-                        frame = cvtColor(frame, COLOR_BGR2RGB, frame)
-                        frame = flip(frame, 1, frame)
-                        self._frame.set((frame, time))
-                    else:
-                        break
+            with self._frame as _send:
+                while _camera.isOpened():
+                    with measure.block("Camera"):
+                        success, frame = _camera.read()
+                        if success:
+                            time = int(_camera.get(CAP_PROP_POS_MSEC))
+                            frame = cvtColor(frame, COLOR_BGR2RGB, frame)
+                            frame = flip(frame, 1, frame)
+                            _send.set((frame, time))
+                        else:
+                            break
         finally:
             _camera.release()
 

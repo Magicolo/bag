@@ -75,7 +75,7 @@ class Window:
             namedWindow(self._name, WINDOW_NORMAL)
             resizeWindow(self._name, self._width, self._height)
 
-            with self._frame.spawn() as _frame, self._players.spawn() as _players, self._hands.spawn() as _hands, self._poses.spawn() as _poses:
+            with self._inputs as _send, self._frame.spawn() as _frame, self._players.spawn() as _players, self._hands.spawn() as _hands, self._poses.spawn() as _poses:
                 for frame, _ in _frame.pops():
                     if _draw:
                         players, hands, poses = (
@@ -127,7 +127,7 @@ class Window:
                             elif key in (ord("q"), 27):
                                 exit = True
                         _last = key
-                        self._inputs.set(Inputs(_draw, reset, _mute, exit))
+                        _send.set(Inputs(_draw, reset, _mute, exit))
         finally:
             destroyWindow(self._name)
 

@@ -7,7 +7,9 @@ import measure
 
 with Camera() as camera, Detector(camera.frame) as detector, Window(
     camera.frame, detector.players, detector.hands, detector.poses
-) as window, Audio(detector.players, window.inputs), window.inputs.spawn() as receive:
+) as window, Audio(
+    detector.hands, detector.poses, window.inputs
+), window.inputs.spawn() as receive:
     for index in count():
         inputs = receive.pop()
         if inputs.exit:

@@ -115,10 +115,9 @@ class Landmark:
         return vector.magnitude(self.velocity)
 
     def update(self, landmark: Self) -> "Landmark":
-        position = vector.lerp(self.position, landmark.position, 0.75)
         return Landmark(
-            position=position,
-            velocity=vector.subtract(position, self.position),
+            position=landmark.position,
+            velocity=vector.subtract(landmark.position, self.position),
             visibility=landmark.visibility,
             presence=landmark.presence,
         )
@@ -611,12 +610,12 @@ class Detector:
         )
 
     def _run_hands(self):
-        with self._load_hands() as _model, self._frame.spawn() as _frame:
+        with self._load_hands() as _model, self._hands as _hands, self._frame.spawn() as _frame:
             for frame, time in _frame.pops():
                 image = Image(ImageFormat.SRGB, frame)
                 with measure.block("Hands"):
                     result = _model.recognize_for_video(image, time)
-                    self._hands.set(
+                    _hands.set(
                         tuple(
                             Hand.new(landmarks, handedness[0], gestures[0])
                             for landmarks, handedness, gestures in zip(
@@ -628,19 +627,19 @@ class Detector:
                     )
 
     def _run_poses(self):
-        with self._load_poses() as _model, self._frame.spawn() as _frame:
+        with self._load_poses() as _model, self._poses as _poses, self._frame.spawn() as _frame:
             for frame, time in _frame.pops():
                 image = Image(ImageFormat.SRGB, frame)
                 with measure.block("Poses"):
                     result = _model.detect_for_video(image, time)
-                    self._poses.set(tuple(map(Pose.new, result.pose_landmarks)))
+                    _poses.set(tuple(map(Pose.new, result.pose_landmarks)))
 
     def _run_players(self):
         _players = tuple(
             Player(Pose.DEFAULT, (Hand.LEFT, Hand.RIGHT)) for _ in range(self._count)
         )
 
-        with self._hands.spawn() as _hands, self._poses.spawn() as _poses:
+        with self._players as _send, self._hands.spawn() as _hands, self._poses.spawn() as _poses:
             for hands, poses in zip(_hands.pops(), _poses.pops()):
                 with measure.block("Players"):
                     hand_indices: Tuple[Set[int], Set[Tuple[int, int]]] = set(), set()
@@ -703,7 +702,7 @@ class Detector:
                                 else:
                                     old = player.hands[1]
                                     player.hands = (player.hands[0], hand.move(motion))
-                    self._players.set(tuple(copy(player) for player in _players))
+                    _send.set(tuple(copy(player) for player in _players))
 
 
 def _model_path(folder: Union[Literal["mediapipe"], Literal["yolo"]], name: str) -> str:
