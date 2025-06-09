@@ -37,6 +37,9 @@ class Cell(Generic[_T]):
         value = self._get(wait if wait > 0.0 else None)
         return None if value is _EMPTY else value
 
+    def try_gets(self, wait: float = 0.0) -> Iterable[Optional[_T]]:
+        return iter(lambda: self.try_get(wait), _CLOSE)
+
     def set(self, value: _T) -> Optional[_T]:
         value, _ = self._set(value, True, True, 0.0)
         return None if value is _EMPTY else value
@@ -113,7 +116,7 @@ class Cell(Generic[_T]):
 class Cells(Generic[_T]):
     def __init__(self):
         self._lock = Condition(Lock())
-        self._cells: List[Cell[_T]] = _EMPTY
+        self._cells: List[Cell[_T]] = []
 
     def __enter__(self):
         self.open()
@@ -127,66 +130,67 @@ class Cells(Generic[_T]):
             with self._lock:
                 if self._cells is _CLOSE:
                     raise Closed("cells are closed")
-                elif self._cells is _EMPTY:
-                    self._lock.wait(wait if wait > 0.0 else None)
-                else:
+                elif self._cells:
                     return
+                else:
+                    self._lock.wait(wait if wait > 0.0 else None)
 
     def close(self):
         with self._lock:
-            if self._cells is not _CLOSE and self._cells is not _EMPTY:
+            if self._cells is _CLOSE:
+                self._lock.notify_all()
+            else:
                 for cell in self._cells:
                     cell.close()
-            self._cells = _CLOSE
-            self._lock.notify_all()
+                self._cells = _CLOSE
+                self._lock.notify_all()
 
     def spawn(self, value: _T = _EMPTY) -> Cell[_T]:
         cell = Cell[_T](value)
         with self._lock:
-            self._get_cells().append(cell)
+            self._get().append(cell)
             self._lock.notify_all()
         return cell
 
     def get(self) -> Sequence[_T]:
         with self._lock:
-            return tuple(cell.get() for cell in self._get_cells())
+            return tuple(cell.get() for cell in self._get())
 
     def try_get(self, wait: float = 0.0) -> Sequence[Optional[_T]]:
         with self._lock:
-            return tuple(cell.try_get(wait) for cell in self._get_cells())
+            return tuple(cell.try_get(wait) for cell in self._get())
 
     def set(self, value: _T) -> Sequence[Optional[_T]]:
         with self._lock:
-            return tuple(cell.set(value) for cell in self._get_cells())
+            return tuple(cell.set(value) for cell in self._get())
 
     def pop(self) -> Sequence[_T]:
         with self._lock:
-            return tuple(cell.pop() for cell in self._get_cells())
+            return tuple(cell.pop() for cell in self._get())
 
     def try_pop(self, wait: float = 0.0) -> Sequence[Optional[_T]]:
         with self._lock:
-            return tuple(cell.try_pop(wait) for cell in self._get_cells())
+            return tuple(cell.try_pop(wait) for cell in self._get())
 
     def swap(self, value: _T) -> Sequence[_T]:
         with self._lock:
-            return tuple(cell.swap(value) for cell in self._get_cells())
+            return tuple(cell.swap(value) for cell in self._get())
 
     def try_swap(self, value: _T, wait: float = 0.0) -> Sequence[Optional[_T]]:
         with self._lock:
-            return tuple(cell.try_swap(value, wait) for cell in self._get_cells())
+            return tuple(cell.try_swap(value, wait) for cell in self._get())
 
     def fill(self, value: _T):
         with self._lock:
-            for cell in self._get_cells():
+            for cell in self._get():
                 cell.fill(value)
 
     def try_fill(self, value: _T, wait: float = 0.0) -> Sequence[bool]:
         with self._lock:
-            return tuple(cell.try_fill(value, wait) for cell in self._get_cells())
+            return tuple(cell.try_fill(value, wait) for cell in self._get())
 
-    def _get_cells(self) -> List[Cell[_T]]:
+    def _get(self) -> List[Cell[_T]]:
         if self._cells is _CLOSE:
             raise Closed("cells are closed")
-        elif self._cells is _EMPTY:
-            self._cells = []
-        return self._cells
+        else:
+            return self._cells

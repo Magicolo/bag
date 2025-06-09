@@ -75,32 +75,11 @@ class Window:
             namedWindow(self._name, WINDOW_NORMAL)
             resizeWindow(self._name, self._width, self._height)
 
-            with self._inputs as _send, self._frame.spawn() as _frame, self._players.spawn() as _players, self._hands.spawn() as _hands, self._poses.spawn() as _poses:
+            with self._inputs as _send, self._frame.spawn() as _frame, self._hands.spawn() as _hands, self._poses.spawn() as _poses:
                 for frame, _ in _frame.pops():
-                    if _draw:
-                        _, hands, poses = (
-                            _players.pop(),
-                            _hands.pop(),
-                            _poses.pop(),
-                        )
-                        with measure.block("Draw"):
-                            # for player in players:
-                            #     for hand in player.hands:
-                            #         frame = _draw_landmarks(
-                            #             frame,
-                            #             hand.landmarks,
-                            #             Hand.CONNECTIONS,
-                            #             (0, 255, 0),
-                            #             2,
-                            #         )
-                            #     frame = _draw_landmarks(
-                            #         frame,
-                            #         player.pose.landmarks,
-                            #         Pose.CONNECTIONS,
-                            #         (0, 255, 0),
-                            #         2,
-                            #     )
-
+                    with measure.block("Window"):
+                        if _draw:
+                            hands, poses = (_hands.pop(), _poses.pop())
                             for hand in hands:
                                 frame = _draw_landmarks(
                                     frame, hand.landmarks, Hand.CONNECTIONS, (255, 0, 0)
@@ -110,10 +89,9 @@ class Window:
                                     frame, pose.landmarks, Pose.CONNECTIONS, (255, 0, 0)
                                 )
 
-                    with measure.block("Window"):
-                        frame = cvtColor(frame, COLOR_RGB2BGR, frame)
-                        frame = resize(frame, (self._width, self._height), frame)
-                        imshow(self._name, frame)
+                            frame = cvtColor(frame, COLOR_RGB2BGR, frame)
+                            frame = resize(frame, (self._width, self._height), frame)
+                            imshow(self._name, frame)
                         key = pollKey()
                         exit = False
                         reset = False

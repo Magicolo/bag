@@ -3,6 +3,7 @@ from enum import Enum
 from math import sqrt
 from pathlib import Path
 from runpy import run_path
+from time import perf_counter
 from typing import Callable, ClassVar, Iterable, List, Optional, Sequence, Set, Tuple
 
 from pyo import Server, PyoObject, Sine, Pan, SigTo, midiToHz, hzToMidi, pa_get_output_devices  # type: ignore
@@ -23,8 +24,7 @@ import vector
 # TODO: When 4 left hands are detected, make it special.
 
 
-_Message = Tuple[Sequence[Hand], Sequence[Pose], bool, bool]
-_CHANNELS = 8
+_CHANNELS = 2
 _PAD = (-1000, -1000, -1000, -1000, -1000)
 
 
@@ -68,17 +68,8 @@ class Instrument:
         self._amplitude = SigTo(0.0)
         self._pan = SigTo(0.5)
         self._base = self._factory.new(self._frequency, self._amplitude)
-        # self._synthesizer = Freeverb(
-        #     Compress(
-        #         Pan(self._base, outs=8, pan=self._pan),  # type: ignore
-        #         risetime=0.001,  # type: ignore
-        #         knee=1.0,  # type: ignore
-        #         lookahead=0.0,  # type: ignore
-        #         thresh=-6.0,  # type: ignore
-        #         ratio=10.0,  # type: ignore
-        #     ),
-        #     size=0.9,
-        #     bal=0.1,
+        # self._synthesizer = Pan(
+        #     Freeverb(self._base, size=0.9, bal=0.1), outs=_CHANNELS, pan=self._pan  # type: ignore
         # ).out()
         self._synthesizer = Pan(self._base, outs=_CHANNELS, pan=self._pan).out()  # type: ignore
 
@@ -92,6 +83,8 @@ class Instrument:
         self._pan.value = pan
 
     def shift(self, frequency: float):
+        # if frequency == self._frequency.value:
+
         self._frequency.value = frequency
 
     def glide(self, glide: float):
@@ -138,20 +131,25 @@ class Audio:
         )
         _instruments: List[Instrument] = []
         _factories = tuple(_load())
-        _old = (tuple(), Inputs.DEFAULT)
+        _old = tuple()
+        _now = None
+        _then = None
 
         try:
-            with self._hands.spawn() as _hands, self._inputs.spawn() as _inputs:
-                _server.setInOutDevice(_device("usb audio", "analog"))
-                _server.boot().start()
+            _server.setInOutDevice(_device("usb audio", "analog"))
+            _server.boot().start()
 
-                for hands, inputs in zip(_hands.pops(), _inputs.try_pops()):
-                    add = tuple(Hand.DEFAULT for _ in range(len(hands) - len(_old[0])))
+            with self._hands.spawn() as _hands, self._inputs.spawn() as _inputs:
+                for hands, inputs in zip(_hands.pops(), _inputs.gets()):
+                    _now = perf_counter()
+                    delta = 0.0 if _then is None else _now - _then
+                    _then = _now
+
+                    add = tuple(Hand.DEFAULT for _ in range(len(hands) - len(_old)))
                     hands = tuple(
-                        old.update(new) for old, new in zip((*_old[0], *add), hands)
+                        old.update(new, delta) for old, new in zip((*_old, *add), hands)
                     )
-                    inputs = inputs or _old[1]
-                    _old = (hands, inputs)
+                    _old = hands
 
                     with measure.block("Audio"):
                         if inputs.reset:
@@ -169,7 +167,7 @@ class Audio:
                                 factory = _factories[(index // 5) % len(_factories)]
                                 _instruments.append(Instrument(factory))
 
-                            attenuate = sqrt(clamp(1 / (len(sounds) + 1))) / 10
+                            attenuate = sqrt(clamp(1 / (len(sounds) + 1))) / 100
                             for instrument, sound in zip(_instruments, sounds):
                                 frequency = _note(sound.frequency, sound.notes)
                                 instrument.glide(sound.glide)
@@ -205,7 +203,7 @@ def _sound(
     glide: bool,
     notes: Sequence[int],
 ) -> Sound:
-    floor = 0.0 if scale <= 0.0 else scale / 5.0
+    floor = scale * 2.5
     range = 1000.0 if scale <= 0.0 else 50.0 / scale
     return Sound(
         frequency=clamp(1 - y) * range * (index % 5 + 1) + 50.0,

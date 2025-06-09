@@ -37,10 +37,10 @@ class Camera:
         return self._frame
 
     def _run(self):
-        _camera = _video(0, 1)
+        _camera = _video(0, 1, 2, 3)
         try:
-            _camera.set(CAP_PROP_FRAME_WIDTH, 640)
-            _camera.set(CAP_PROP_FRAME_HEIGHT, 480)
+            _camera.set(CAP_PROP_FRAME_WIDTH, 352)
+            _camera.set(CAP_PROP_FRAME_HEIGHT, 288)
             _camera.set(CAP_PROP_FPS, 60)
             _camera.set(CAP_PROP_SHARPNESS, 5)
             _camera.set(CAP_PROP_GAMMA, 125)

@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from enum import IntEnum
 from functools import cached_property
 from pathlib import Path
+from time import perf_counter
 from typing import (
     ClassVar,
     Iterable,
@@ -114,10 +115,12 @@ class Landmark:
     def speed(self) -> float:
         return vector.magnitude(self.velocity)
 
-    def update(self, landmark: Self) -> "Landmark":
+    def update(self, landmark: Self, delta: float) -> "Landmark":
         return Landmark(
             position=landmark.position,
-            velocity=vector.subtract(landmark.position, self.position),
+            velocity=vector.divide(
+                vector.subtract(landmark.position, self.position), delta
+            ),
             visibility=landmark.visibility,
             presence=landmark.presence,
         )
@@ -346,10 +349,11 @@ class Hand(Composite):
                 and not self.index.touches(hand.thumb)
             )
 
-    def update(self, hand: Self) -> "Hand":
+    def update(self, hand: Self, delta: float) -> "Hand":
         return Hand(
             landmarks=tuple(
-                old.update(new) for old, new in zip(self.landmarks, hand.landmarks)
+                old.update(new, delta)
+                for old, new in zip(self.landmarks, hand.landmarks)
             ),
             handedness=hand.handedness,
             gesture=hand.gesture,
@@ -512,10 +516,11 @@ class Pose(Composite):
             ),
         )
 
-    def update(self, pose: Self) -> "Pose":
+    def update(self, pose: Self, delta: float) -> "Pose":
         return Pose(
             landmarks=tuple(
-                old.update(new) for old, new in zip(self.landmarks, pose.landmarks)
+                old.update(new, delta)
+                for old, new in zip(self.landmarks, pose.landmarks)
             )
         )
 
@@ -638,10 +643,16 @@ class Detector:
         _players = tuple(
             Player(Pose.DEFAULT, (Hand.LEFT, Hand.RIGHT)) for _ in range(self._count)
         )
+        _now = None
+        _then = None
 
         with self._players as _send, self._hands.spawn() as _hands, self._poses.spawn() as _poses:
             for hands, poses in zip(_hands.pops(), _poses.pops()):
                 with measure.block("Players"):
+                    _now = perf_counter()
+                    delta = 0.0 if _then is None else _now - _then
+                    _then = _now
+
                     hand_indices: Tuple[Set[int], Set[Tuple[int, int]]] = set(), set()
                     hand_distances = sorted(
                         (
@@ -664,9 +675,9 @@ class Detector:
                         old = player.hands[o]
                         new = hands[n]
                         if o == 0:
-                            player.hands = (old.update(new), player.hands[1])
+                            player.hands = (old.update(new, delta), player.hands[1])
                         else:
-                            player.hands = (player.hands[0], old.update(new))
+                            player.hands = (player.hands[0], old.update(new, delta))
 
                     pose_indices: Tuple[Set[int], Set[int]] = set(), set()
                     pose_distances = sorted(
@@ -684,7 +695,7 @@ class Detector:
                             pose_indices[0].add(n)
                             pose_indices[1].add(p)
 
-                        _players[p].pose = _players[p].pose.update(poses[n])
+                        _players[p].pose = _players[p].pose.update(poses[n], delta)
 
                     for p, player in enumerate(_players):
                         if p in pose_indices[1]:

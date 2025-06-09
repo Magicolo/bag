@@ -4,7 +4,6 @@ from threading import Lock
 from time import perf_counter
 from typing import Callable, Iterable, TypeVar
 
-from numpy import mean
 
 _T = TypeVar("_T")
 _LOCK = Lock()
@@ -57,6 +56,11 @@ def flush():
     with _LOCK:
         for key, values in _REGISTER.items():
             if values:
-                register[key] = mean(values)
+                register[key] = sum(values), len(values)
                 values.clear()
-    print(" | ".join(f"{key}: {mean:.5f}s" for key, mean in register.items()))
+    print(
+        " | ".join(
+            f"{key}({count}): {sum / count:.5f}s"
+            for key, (sum, count) in register.items()
+        )
+    )
