@@ -15,6 +15,7 @@ from typing import (
     Tuple,
     Union,
 )
+import utility
 from mediapipe.tasks.python.components.containers.landmark import NormalizedLandmark
 from cv2.typing import MatLike
 from mediapipe import Image, ImageFormat
@@ -64,11 +65,14 @@ class Gesture(IntEnum):
         else:
             return Gesture.NONE
 
+    def one_shot(self) -> Sequence[float]:
+        return tuple(1.0 if value == self else 0.0 for value in Gesture)
+
 
 class Handedness(IntEnum):
     NONE = 0
-    LEFT = -1
-    RIGHT = 1
+    LEFT = 1
+    RIGHT = 2
 
     @staticmethod
     def from_name(name: Optional[str]):
@@ -79,6 +83,9 @@ class Handedness(IntEnum):
                 return Handedness.NONE
         else:
             return Handedness.NONE
+
+    def one_shot(self) -> Sequence[float]:
+        return tuple(1.0 if value == self else 0.0 for value in Handedness)
 
 
 @dataclass(frozen=True)
@@ -248,12 +255,25 @@ class Hand(Composite):
     ) -> "Hand":
         return Hand(
             landmarks=tuple(Landmark.new(normalized) for normalized in landmarks),
-            handedness=Handedness.from_name(handedness.category_name or ""),
-            gesture=Gesture.from_name(gesture.category_name or ""),
+            handednesses=Handedness.from_name(
+                handedness.category_name or ""
+            ).one_shot(),
+            gestures=Gesture.from_name(gesture.category_name or "").one_shot(),
         )
 
-    handedness: Handedness
-    gesture: Gesture
+    handednesses: Sequence[float] = (0.0, 0.0, 0.0)
+    gestures: Sequence[float] = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+    frames: int = 0
+
+    @cached_property
+    def gesture(self) -> Gesture:
+        return Gesture(max(enumerate(self.gestures), key=lambda pair: pair[1])[0])
+
+    @cached_property
+    def handedness(self) -> Handedness:
+        return Handedness(
+            max(enumerate(self.handednesses), key=lambda pair: pair[1])[0]
+        )
 
     @cached_property
     def palm(self) -> Composite:
@@ -350,39 +370,41 @@ class Hand(Composite):
             )
 
     def update(self, hand: Self, delta: float) -> "Hand":
-        return Hand(
-            landmarks=tuple(
+        if self.frames < 5:
+            landmarks = self.landmarks
+        else:
+            landmarks = tuple(
                 old.update(new, delta)
                 for old, new in zip(self.landmarks, hand.landmarks)
+            )
+        return Hand(
+            landmarks=landmarks,
+            handednesses=utility.lerp(
+                self.handednesses, hand.handednesses, delta * 5.0
             ),
-            handedness=hand.handedness,
-            gesture=hand.gesture,
+            gestures=utility.lerp(self.gestures, hand.gestures, delta * 5.0),
+            frames=self.frames + 1,
         )
 
     def move(self, motion: Vector) -> "Hand":
         return Hand(
             landmarks=tuple(landmark.move(motion) for landmark in self.landmarks),
-            handedness=self.handedness,
-            gesture=self.gesture,
+            handednesses=self.handednesses,
+            gestures=self.gestures,
+            frames=self.frames + 1,
         )
 
 
-Hand.DEFAULT = Hand(
-    landmarks=tuple(Landmark.DEFAULT for _ in range(21)),
-    handedness=Handedness.NONE,
-    gesture=Gesture.NONE,
-)
+Hand.DEFAULT = Hand(landmarks=tuple(Landmark.DEFAULT for _ in range(21)))
 
 Hand.LEFT = Hand(
     landmarks=tuple(Landmark.DEFAULT for _ in range(21)),
-    handedness=Handedness.LEFT,
-    gesture=Gesture.NONE,
+    handednesses=Handedness.LEFT.one_shot(),
 )
 
 Hand.RIGHT = Hand(
     landmarks=tuple(Landmark.DEFAULT for _ in range(21)),
-    handedness=Handedness.RIGHT,
-    gesture=Gesture.NONE,
+    handednesses=Handedness.RIGHT.one_shot(),
 )
 
 

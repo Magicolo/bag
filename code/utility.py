@@ -1,5 +1,5 @@
 from threading import Thread
-from typing import Callable, Type, TypeVar, overload
+from typing import Callable, Sequence, Tuple, Type, TypeVar, Union, overload
 from cell import Closed
 
 _T = TypeVar("_T")
@@ -24,8 +24,39 @@ def cut(value: float, floor: float, default: float = 0):
     return default if value < floor else value
 
 
+@overload
 def lerp(source: float, target: float, time: float) -> float:
-    return source + (target - source) * clamp(time)
+    (...)
+
+
+@overload
+def lerp(
+    source: Tuple[float, ...], target: Tuple[float, ...], time: float
+) -> Tuple[float, ...]:
+    (...)
+
+
+@overload
+def lerp(
+    source: Sequence[float], target: Sequence[float], time: float
+) -> Sequence[float]:
+    (...)
+
+
+def lerp(
+    source: Union[float, Sequence[float]],
+    target: Union[float, Sequence[float]],
+    time: float,
+) -> Union[float, Sequence[float]]:
+    if isinstance(source, Sequence):
+        if isinstance(target, Sequence):
+            return tuple(lerp(left, right, time) for left, right in zip(source, target))
+        else:
+            return tuple(lerp(left, target, time) for left in source)
+    elif isinstance(target, Sequence):
+        return tuple(lerp(source, right, time) for right in target)
+    else:
+        return source + (target - source) * clamp(time)
 
 
 @overload

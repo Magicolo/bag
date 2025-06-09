@@ -6,12 +6,12 @@ from runpy import run_path
 from time import perf_counter
 from typing import Callable, ClassVar, Iterable, List, Optional, Sequence, Set, Tuple
 
-from pyo import Server, PyoObject, Sine, Pan, SigTo, midiToHz, hzToMidi, pa_get_output_devices  # type: ignore
+from pyo import Server, PyoObject, Sine, Pan, SigTo, Freeverb, Delay, midiToHz, hzToMidi, pa_get_output_devices  # type: ignore
 from cell import Cells
 from window import Inputs
 from detect import Gesture, Hand, Pose
 import measure
-from utility import clamp, cut, debug, run
+from utility import clamp, cut, debug, lerp, run
 import vector
 
 
@@ -59,6 +59,7 @@ class Sound:
     pan: float
     notes: Sequence[int]
     glide: float
+    echo: float
 
 
 class Instrument:
@@ -67,11 +68,15 @@ class Instrument:
         self._frequency = SigTo(0.0)
         self._amplitude = SigTo(0.0)
         self._pan = SigTo(0.5)
+        self._reverb = SigTo(1.0)
+        self._delay = SigTo(0.0)
         self._base = self._factory.new(self._frequency, self._amplitude)
-        # self._synthesizer = Pan(
-        #     Freeverb(self._base, size=0.9, bal=0.1), outs=_CHANNELS, pan=self._pan  # type: ignore
-        # ).out()
-        self._synthesizer = Pan(self._base, outs=_CHANNELS, pan=self._pan).out()  # type: ignore
+        self._synthesizer = Pan(
+            Freeverb(self._base, size=0.9, bal=0.1, mul=self._reverb)  # type: ignore
+            + Delay(self._base, delay=[0.13, 0.19, 0.23], feedback=0.75, mul=self._delay),  # type: ignore
+            outs=_CHANNELS,  # type: ignore
+            pan=self._pan,  # type: ignore
+        ).out()
 
     def stop(self):
         self._synthesizer.stop()
@@ -83,12 +88,15 @@ class Instrument:
         self._pan.value = pan
 
     def shift(self, frequency: float):
-        # if frequency == self._frequency.value:
-
         self._frequency.value = frequency
 
     def glide(self, glide: float):
         self._frequency.time = glide
+
+    def echo(self, echo: float):
+        echo = clamp(echo)
+        self._reverb.value = 1.0 - echo
+        self._delay.value = echo
 
 
 class Audio:
@@ -171,6 +179,7 @@ class Audio:
                             for instrument, sound in zip(_instruments, sounds):
                                 frequency = _note(sound.frequency, sound.notes)
                                 instrument.glide(sound.glide)
+                                instrument.echo(sound.echo)
                                 instrument.shift(frequency)
                                 instrument.pan(sound.pan)
                                 instrument.fade(sound.amplitude * attenuate)
@@ -200,7 +209,8 @@ def _sound(
     speed: float,
     scale: float,
     index: int,
-    glide: bool,
+    glide: float,
+    echo: float,
     notes: Sequence[int],
 ) -> Sound:
     floor = scale * 2.5
@@ -210,7 +220,8 @@ def _sound(
         amplitude=clamp(cut(speed, floor) * 100.0),
         pan=clamp(1 - x),
         notes=notes,
-        glide=0.25 if glide else 0.025,
+        glide=lerp(0.025, 0.25, glide),
+        echo=echo,
     )
 
 
@@ -225,7 +236,9 @@ def _secret(hand: Hand, hands: Sequence[Hand], skip: Set[Hand]) -> Optional[Soun
             speed = hand.speed + other.speed / 2.0
             index = int((hand.x + other.x / 2.0) * len(Notes.SECRET))
             note = Notes.SECRET[index % len(Notes.SECRET)]
-            return _sound(position[0], position[1], speed, 0.0, 0, False, (note,))
+            return _sound(
+                position[0], position[1], speed, 0.0, 0, False, False, (note,)
+            )
 
 
 def _sounds(hands: Sequence[Hand]) -> Iterable[Sound]:
@@ -240,13 +253,38 @@ def _sounds(hands: Sequence[Hand]) -> Iterable[Sound]:
             continue
 
         for index, finger in enumerate(hand.fingers):
+            if hand.gesture in (Gesture.NONE, Gesture.OPEN_PALM, Gesture.ILOVEYOU):
+                speed = finger.tip.speed
+            elif index == 0:
+                speed = finger.tip.speed * max(
+                    hand.gestures[Gesture.THUMB_UP],
+                    hand.gestures[Gesture.THUMB_DOWN],
+                    hand.gestures[Gesture.OPEN_PALM],
+                )
+            elif index == 1:
+                speed = finger.tip.speed * max(
+                    hand.gestures[Gesture.POINTING_UP],
+                    hand.gestures[Gesture.VICTORY],
+                    hand.gestures[Gesture.OPEN_PALM],
+                )
+            elif index == 2:
+                speed = finger.tip.speed * max(
+                    hand.gestures[Gesture.VICTORY],
+                    hand.gestures[Gesture.OPEN_PALM],
+                )
+            else:
+                speed = 0.0
+
+            speed *= 1.0 - hand.gestures[Gesture.CLOSED_FIST]
+
             yield _sound(
                 finger.tip.x,
                 finger.tip.y,
-                finger.tip.speed,
+                speed,
                 finger.length,
                 index,
-                hand.gesture == Gesture.ILOVEYOU,
+                hand.gestures[Gesture.ILOVEYOU],
+                hand.gestures[Gesture.CLOSED_FIST],
                 Notes.NATURAL,
             )
 
