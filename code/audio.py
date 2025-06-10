@@ -15,13 +15,10 @@ from utility import clamp, cut, debug, lerp, run
 import vector
 
 
-# TODO: Require some gesture to start the interaction?
-# TODO: Create an evaluation loop to tweak the instruments. Use Python's eval and an 'instruments' folder.
+# TODO: Require some gesture to start the interaction (an open palm?)?
 # TODO: Finger that touch must charge a note.
 # TODO: Convert kick/punch impacts in cymbal/percussion-like sounds.
 # TODO: Use handedness to choose the instrument.
-# TODO: When 4 right hands are detected, make it special.
-# TODO: When 4 left hands are detected, make it special.
 
 
 _CHANNELS = 2
@@ -66,7 +63,7 @@ class Instrument:
     def __init__(self, factory: Factory):
         self._factory = factory
         self._frequency = SigTo(0.0)
-        self._amplitude = SigTo(0.0)
+        self._amplitude = SigTo(0.0, time=0.25)
         self._pan = SigTo(0.5)
         self._reverb = SigTo(1.0)
         self._delay = SigTo(0.0)
@@ -168,7 +165,7 @@ class Audio:
                             for instrument in _instruments:
                                 instrument.fade(0)
                         else:
-                            sounds = tuple(_sounds(hands))
+                            sounds = tuple(_sounds(delta, hands))
                             while len(_instruments) < len(sounds):
                                 index = len(_instruments)
                                 factory = _factories[(index // 5) % len(_factories)]
@@ -210,9 +207,10 @@ def _sound(
     index: int,
     glide: float,
     echo: float,
+    delta: float,
     notes: Sequence[int],
 ) -> Sound:
-    floor = scale * 2.5
+    floor = scale * delta * 150.0
     range = 1000.0 if scale <= 0.0 else 50.0 / scale
     return Sound(
         frequency=clamp(1 - y) * range * (index % 5 + 1) + 50.0,
@@ -224,7 +222,9 @@ def _sound(
     )
 
 
-def _secret(hand: Hand, hands: Sequence[Hand], skip: Set[Hand]) -> Optional[Sound]:
+def _secret(
+    delta: float, hand: Hand, hands: Sequence[Hand], skip: Set[Hand]
+) -> Optional[Sound]:
     for other in hands:
         if other in skip:
             continue
@@ -236,17 +236,17 @@ def _secret(hand: Hand, hands: Sequence[Hand], skip: Set[Hand]) -> Optional[Soun
             index = int((hand.x + other.x / 2.0) * len(Notes.SECRET))
             note = Notes.SECRET[index % len(Notes.SECRET)]
             return _sound(
-                position[0], position[1], speed, 0.0, 0, False, False, (note,)
+                position[0], position[1], speed, 0.0, 0, False, False, delta, (note,)
             )
 
 
-def _sounds(hands: Sequence[Hand]) -> Iterable[Sound]:
+def _sounds(delta: float, hands: Sequence[Hand]) -> Iterable[Sound]:
     skip = set()
     for hand in hands:
         if hand in skip:
             continue
 
-        secret = _secret(hand, hands, skip)
+        secret = _secret(delta, hand, hands, skip)
         if secret:
             yield secret
             continue
@@ -284,6 +284,7 @@ def _sounds(hands: Sequence[Hand]) -> Iterable[Sound]:
                 index,
                 hand.gestures[Gesture.ILOVEYOU],
                 hand.gestures[Gesture.CLOSED_FIST],
+                delta,
                 Notes.NATURAL,
             )
 

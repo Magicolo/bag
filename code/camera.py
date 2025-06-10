@@ -3,6 +3,7 @@ from typing import Tuple
 
 
 from cv2 import (
+    CAP_PROP_FOURCC,
     CAP_PROP_FPS,
     CAP_PROP_FRAME_HEIGHT,
     CAP_PROP_FRAME_WIDTH,
@@ -11,6 +12,7 @@ from cv2 import (
     CAP_PROP_SHARPNESS,
     COLOR_BGR2RGB,
     VideoCapture,
+    VideoWriter,
     cvtColor,
     flip,
 )
@@ -37,10 +39,12 @@ class Camera:
         return self._frame
 
     def _run(self):
+        _time = 0
         _camera = _video(0, 1, 2, 3)
         try:
-            _camera.set(CAP_PROP_FRAME_WIDTH, 352)
-            _camera.set(CAP_PROP_FRAME_HEIGHT, 288)
+            _camera.set(CAP_PROP_FRAME_WIDTH, 640)
+            _camera.set(CAP_PROP_FRAME_HEIGHT, 480)
+            _camera.set(CAP_PROP_FOURCC, VideoWriter.fourcc(*"MJPG"))
             _camera.set(CAP_PROP_FPS, 60)
             _camera.set(CAP_PROP_SHARPNESS, 5)
             _camera.set(CAP_PROP_GAMMA, 125)
@@ -53,10 +57,10 @@ class Camera:
                     with measure.block("Camera"):
                         success, frame = _camera.read()
                         if success:
-                            time = int(_camera.get(CAP_PROP_POS_MSEC))
+                            _time = max(int(_camera.get(CAP_PROP_POS_MSEC)), _time + 1)
                             frame = cvtColor(frame, COLOR_BGR2RGB, frame)
                             frame = flip(frame, 1, frame)
-                            _send.set((frame, time))
+                            _send.set((frame, _time))
                         else:
                             break
         finally:
