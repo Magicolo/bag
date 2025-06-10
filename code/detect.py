@@ -379,10 +379,8 @@ class Hand(Composite):
             )
         return Hand(
             landmarks=landmarks,
-            handednesses=utility.lerp(
-                self.handednesses, hand.handednesses, delta * 5.0
-            ),
-            gestures=utility.lerp(self.gestures, hand.gestures, delta * 5.0),
+            handednesses=utility.lerp(self.handednesses, hand.handednesses, delta),
+            gestures=utility.lerp(self.gestures, hand.gestures, delta * 2.5),
             frames=self.frames + 1,
         )
 

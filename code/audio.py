@@ -94,9 +94,8 @@ class Instrument:
         self._frequency.time = glide
 
     def echo(self, echo: float):
-        echo = clamp(echo)
-        self._reverb.value = 1.0 - echo
-        self._delay.value = echo
+        self._reverb.value = clamp(1.0 - echo)
+        self._delay.value = clamp(echo) * 2.5
 
 
 class Audio:
@@ -253,29 +252,29 @@ def _sounds(hands: Sequence[Hand]) -> Iterable[Sound]:
             continue
 
         for index, finger in enumerate(hand.fingers):
-            if hand.gesture in (Gesture.NONE, Gesture.OPEN_PALM, Gesture.ILOVEYOU):
-                speed = finger.tip.speed
-            elif index == 0:
-                speed = finger.tip.speed * max(
-                    hand.gestures[Gesture.THUMB_UP],
-                    hand.gestures[Gesture.THUMB_DOWN],
-                    hand.gestures[Gesture.OPEN_PALM],
-                )
-            elif index == 1:
-                speed = finger.tip.speed * max(
-                    hand.gestures[Gesture.POINTING_UP],
-                    hand.gestures[Gesture.VICTORY],
-                    hand.gestures[Gesture.OPEN_PALM],
-                )
-            elif index == 2:
-                speed = finger.tip.speed * max(
-                    hand.gestures[Gesture.VICTORY],
-                    hand.gestures[Gesture.OPEN_PALM],
-                )
-            else:
-                speed = 0.0
+            # if hand.gesture in (Gesture.NONE, Gesture.OPEN_PALM, Gesture.ILOVEYOU):
+            #     speed = finger.tip.speed
+            # elif index == 0:
+            #     speed = finger.tip.speed * max(
+            #         hand.gestures[Gesture.THUMB_UP],
+            #         hand.gestures[Gesture.THUMB_DOWN],
+            #         hand.gestures[Gesture.OPEN_PALM],
+            #     )
+            # elif index == 1:
+            #     speed = finger.tip.speed * max(
+            #         hand.gestures[Gesture.POINTING_UP],
+            #         hand.gestures[Gesture.VICTORY],
+            #         hand.gestures[Gesture.OPEN_PALM],
+            #     )
+            # elif index == 2:
+            #     speed = finger.tip.speed * max(
+            #         hand.gestures[Gesture.VICTORY],
+            #         hand.gestures[Gesture.OPEN_PALM],
+            #     )
+            # else:
+            #     speed = 0.0
 
-            speed *= 1.0 - hand.gestures[Gesture.CLOSED_FIST]
+            speed = finger.tip.speed * clamp(1.0 - hand.gestures[Gesture.CLOSED_FIST])
 
             yield _sound(
                 finger.tip.x,
