@@ -21,7 +21,7 @@ import vector
 # TODO: Use handedness to choose the instrument.
 
 
-_CHANNELS = 2
+_CHANNELS = 8
 _PAD = (-1000, -1000, -1000, -1000, -1000)
 
 
@@ -75,13 +75,33 @@ class Instrument:
             pan=self._pan,  # type: ignore
         ).out()
 
+    @property
+    def amplitude(self):
+        return self._amplitude.value
+
+    @property
+    def frequency(self):
+        return self._frequency.value
+
+    @property
+    def pan(self):
+        return self._pan.value
+
+    @property
+    def reverb(self):
+        return self._reverb.value
+
+    @property
+    def delay(self):
+        return self._delay.value
+
     def stop(self):
         self._synthesizer.stop()
 
     def fade(self, volume: float):
         self._amplitude.value = volume
 
-    def pan(self, pan: float):
+    def spatialize(self, pan: float):
         self._pan.value = pan
 
     def shift(self, frequency: float):
@@ -92,7 +112,7 @@ class Instrument:
 
     def echo(self, echo: float):
         self._reverb.value = clamp(1.0 - echo)
-        self._delay.value = clamp(echo) * 2.5
+        self._delay.value = clamp(echo) * 5
 
 
 class Audio:
@@ -130,9 +150,7 @@ class Audio:
         pass
 
     def _run(self):
-        _server = Server(
-            audio="pulse", sr=48000, duplex=0, ichnls=0, nchnls=_CHANNELS, buffersize=64
-        )
+        _server = _initialize()
         _instruments: List[Instrument] = []
         _factories = tuple(_load())
         _old = tuple()
@@ -140,9 +158,6 @@ class Audio:
         _then = None
 
         try:
-            _server.setInOutDevice(_device("usb audio", "analog"))
-            _server.boot().start()
-
             with self._hands.spawn() as _hands, self._inputs.spawn() as _inputs:
                 for hands, inputs in zip(_hands.pops(), _inputs.gets()):
                     _now = perf_counter()
@@ -156,11 +171,18 @@ class Audio:
                     _old = hands
 
                     with measure.block("Audio"):
+                        totals = (
+                            sum(instrument.amplitude for instrument in _instruments),
+                            sum(map(float, _server.getCurrentAmp())),
+                        )
+                        if totals[0] > 0.0 and totals[1] <= 0.0:
+                            print("=> Restarting Server")
+                            _server = _initialize(_server)
+                            _factories = _reset(_instruments)
+
                         if inputs.reset:
-                            _factories = tuple(_load())
-                            for instrument in _instruments:
-                                instrument.stop()
-                            _instruments.clear()
+                            print("=> Resetting Instruments")
+                            _factories = _reset(_instruments)
                         elif inputs.mute:
                             for instrument in _instruments:
                                 instrument.fade(0)
@@ -177,13 +199,42 @@ class Audio:
                                 instrument.glide(sound.glide)
                                 instrument.echo(sound.echo)
                                 instrument.shift(frequency)
-                                instrument.pan(sound.pan)
+                                instrument.spatialize(sound.pan)
                                 instrument.fade(sound.amplitude * attenuate)
 
                             for instrument in _instruments[len(sounds) :]:
                                 instrument.fade(0)
         finally:
             _server.stop()
+            _server.shutdown()
+
+
+def _initialize(server: Optional[Server] = None) -> Server:
+    if server:
+        server.stop()
+        server.shutdown()
+
+    server = Server(
+        sr=48000,
+        duplex=0,
+        ichnls=0,
+        nchnls=_CHANNELS,
+        buffersize=256,
+    )
+    try:
+        server.setInOutDevice(_device("usb audio", "analog"))
+        return server.boot().start()
+    except Exception:
+        server.stop()
+        server.shutdown()
+        raise
+
+
+def _reset(instruments: List[Instrument]) -> Sequence[Factory]:
+    for instrument in instruments:
+        instrument.stop()
+    instruments.clear()
+    return tuple(_load())
 
 
 def _load() -> Iterable[Factory]:
@@ -252,28 +303,6 @@ def _sounds(delta: float, hands: Sequence[Hand]) -> Iterable[Sound]:
             continue
 
         for index, finger in enumerate(hand.fingers):
-            # if hand.gesture in (Gesture.NONE, Gesture.OPEN_PALM, Gesture.ILOVEYOU):
-            #     speed = finger.tip.speed
-            # elif index == 0:
-            #     speed = finger.tip.speed * max(
-            #         hand.gestures[Gesture.THUMB_UP],
-            #         hand.gestures[Gesture.THUMB_DOWN],
-            #         hand.gestures[Gesture.OPEN_PALM],
-            #     )
-            # elif index == 1:
-            #     speed = finger.tip.speed * max(
-            #         hand.gestures[Gesture.POINTING_UP],
-            #         hand.gestures[Gesture.VICTORY],
-            #         hand.gestures[Gesture.OPEN_PALM],
-            #     )
-            # elif index == 2:
-            #     speed = finger.tip.speed * max(
-            #         hand.gestures[Gesture.VICTORY],
-            #         hand.gestures[Gesture.OPEN_PALM],
-            #     )
-            # else:
-            #     speed = 0.0
-
             speed = finger.tip.speed * clamp(1.0 - hand.gestures[Gesture.CLOSED_FIST])
 
             yield _sound(
