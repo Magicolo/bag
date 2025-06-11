@@ -686,7 +686,9 @@ class Detector:
                                 (float(landmark[0]), float(landmark[1]), 0.0)
                                 for landmark in landmarks
                             )
-                            for result in _model.predict(frame, True)
+                            for result in _model.predict(
+                                frame, stream=True, conf=self._confidence
+                            )
                             if result.keypoints and result.keypoints.has_visible
                             for landmarks in result.keypoints.xyn
                         )
