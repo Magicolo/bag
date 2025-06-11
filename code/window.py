@@ -86,7 +86,7 @@ class Window:
                                 )
                             for pose in poses:
                                 frame = _draw_landmarks(
-                                    frame, pose.landmarks, Pose.CONNECTIONS, (255, 0, 0)
+                                    frame, pose.landmarks, (), (255, 0, 0)
                                 )
 
                             frame = cvtColor(frame, COLOR_RGB2BGR, frame)

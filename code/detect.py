@@ -15,8 +15,9 @@ from typing import (
     Tuple,
     Union,
 )
+
+from ultralytics import YOLO
 import utility
-from mediapipe.tasks.python.components.containers.landmark import NormalizedLandmark
 from cv2.typing import MatLike
 from mediapipe import Image, ImageFormat
 from mediapipe.tasks.python.core.base_options import BaseOptions
@@ -35,7 +36,6 @@ from mediapipe.tasks.python.vision.gesture_recognizer import (
 from mediapipe.tasks.python.vision.pose_landmarker import (
     PoseLandmarker,
     PoseLandmarkerOptions,
-    PoseLandmarksConnections,
 )
 
 from cell import Cells
@@ -93,18 +93,14 @@ class Landmark:
     DEFAULT: ClassVar[Self]
 
     @staticmethod
-    def new(landmark: NormalizedLandmark) -> "Landmark":
+    def new(landmark: Vector) -> "Landmark":
         return Landmark(
-            position=(landmark.x or 0.0, landmark.y or 0.0, landmark.z or 0.0),
+            position=landmark,
             velocity=(0.0, 0.0, 0.0),
-            visibility=landmark.visibility or 0.0,
-            presence=landmark.presence or 0.0,
         )
 
     position: Vector
     velocity: Vector
-    visibility: float
-    presence: float
 
     @property
     def x(self) -> float:
@@ -127,25 +123,13 @@ class Landmark:
         return Landmark(
             position=position,
             velocity=vector.divide(vector.subtract(position, self.position), delta),
-            visibility=landmark.visibility,
-            presence=landmark.presence,
         )
 
     def move(self, motion: Vector) -> "Landmark":
-        return Landmark(
-            position=vector.add(self.position, motion),
-            velocity=motion,
-            visibility=self.visibility,
-            presence=self.presence,
-        )
+        return Landmark(position=vector.add(self.position, motion), velocity=motion)
 
 
-Landmark.DEFAULT = Landmark(
-    position=(0.0, 0.0, 0.0),
-    velocity=(0.0, 0.0, 0.0),
-    visibility=0.0,
-    presence=0.0,
-)
+Landmark.DEFAULT = Landmark(position=(0.0, 0.0, 0.0), velocity=(0.0, 0.0, 0.0))
 
 
 @dataclass(frozen=True)
@@ -250,10 +234,10 @@ class Hand(Composite):
 
     @staticmethod
     def new(
-        landmarks: Iterable[NormalizedLandmark], handedness: Category, gesture: Category
+        landmarks: Iterable[Vector], handedness: Category, gesture: Category
     ) -> "Hand":
         return Hand(
-            landmarks=tuple(Landmark.new(normalized) for normalized in landmarks),
+            landmarks=tuple(Landmark.new(landmark) for landmark in landmarks),
             handednesses=Handedness.from_name(
                 handedness.category_name or ""
             ).one_shot(),
@@ -408,25 +392,33 @@ Hand.RIGHT = Hand(
 @dataclass(frozen=True)
 class Pose(Composite):
     DEFAULT: ClassVar[Self]
-    CONNECTIONS: ClassVar[Sequence[Tuple[int, int]]] = tuple(
-        (connection.start, connection.end)
-        for connection in PoseLandmarksConnections.POSE_LANDMARKS
-    )
 
     @staticmethod
-    def new(landmarks: Iterable[NormalizedLandmark]) -> "Pose":
+    def new(landmarks: Iterable[Vector]) -> "Pose":
         return Pose(landmarks=tuple(map(Landmark.new, landmarks)))
+
+    frames: int = 0
+
+    @cached_property
+    def head(self) -> Composite:
+        if len(self.landmarks) == 17:
+            return Composite(landmarks=self.landmarks[:5])
+        else:
+            return Composite(landmarks=self.landmarks[:11])
 
     @cached_property
     def eyes(self) -> Tuple[Composite, Composite]:
-        return (
-            Composite(
-                landmarks=(self.landmarks[4], self.landmarks[5], self.landmarks[6])
-            ),
-            Composite(
-                landmarks=(self.landmarks[1], self.landmarks[2], self.landmarks[3])
-            ),
-        )
+        if len(self.landmarks) == 17:
+            return Composite((self.landmarks[1],)), Composite((self.landmarks[2],))
+        else:
+            return (
+                Composite(
+                    landmarks=(self.landmarks[4], self.landmarks[5], self.landmarks[6])
+                ),
+                Composite(
+                    landmarks=(self.landmarks[1], self.landmarks[2], self.landmarks[3])
+                ),
+            )
 
     @property
     def nose(self) -> Landmark:
@@ -434,114 +426,133 @@ class Pose(Composite):
 
     @cached_property
     def mouth(self) -> Composite:
-        return Composite(landmarks=(self.landmarks[9], self.landmarks[10]))
+        if len(self.landmarks) == 17:
+            return Composite(landmarks=())
+        else:
+            return Composite(landmarks=(self.landmarks[9], self.landmarks[10]))
 
     @property
     def ears(self) -> Tuple[Landmark, Landmark]:
-        return self.landmarks[8], self.landmarks[7]
+        if len(self.landmarks) == 17:
+            return self.landmarks[3], self.landmarks[4]
+        else:
+            return self.landmarks[8], self.landmarks[7]
 
     @cached_property
-    def palms(self) -> Tuple[Composite, Composite]:
-        return (
-            Composite(
-                landmarks=(
-                    self.landmarks[16],
-                    self.landmarks[18],
-                    self.landmarks[20],
-                    self.landmarks[22],
-                )
-            ),
-            Composite(
-                landmarks=(
-                    self.landmarks[15],
-                    self.landmarks[17],
-                    self.landmarks[19],
-                    self.landmarks[21],
-                )
-            ),
+    def torso(self) -> Composite:
+        return Composite(
+            landmarks=(self.shoulders[0], self.shoulders[1], self.hips[1], self.hips[0])
         )
 
     @cached_property
     def arms(self) -> Tuple[Composite, Composite]:
         return (
-            Composite(
-                landmarks=(self.landmarks[12], self.landmarks[14], self.landmarks[16])
-            ),
-            Composite(
-                landmarks=(self.landmarks[11], self.landmarks[13], self.landmarks[15])
-            ),
+            Composite(landmarks=(self.shoulders[0], self.elbows[0], self.wrists[0])),
+            Composite(landmarks=(self.shoulders[1], self.elbows[1], self.wrists[1])),
         )
+
+    @cached_property
+    def palms(self) -> Tuple[Composite, Composite]:
+        if len(self.landmarks) == 17:
+            return (
+                Composite(landmarks=(self.wrists[0],)),
+                Composite(landmarks=(self.wrists[1],)),
+            )
+        else:
+            return (
+                Composite(
+                    landmarks=(
+                        self.wrists[0],
+                        self.landmarks[18],
+                        self.landmarks[20],
+                        self.landmarks[22],
+                    )
+                ),
+                Composite(
+                    landmarks=(
+                        self.wrists[1],
+                        self.landmarks[17],
+                        self.landmarks[19],
+                        self.landmarks[21],
+                    )
+                ),
+            )
 
     @property
     def shoulders(self) -> Tuple[Landmark, Landmark]:
-        return (self.landmarks[12], self.landmarks[11])
-
-    @property
-    def hips(self) -> Tuple[Landmark, Landmark]:
-        return (self.landmarks[24], self.landmarks[23])
-
-    @property
-    def ankles(self) -> Tuple[Landmark, Landmark]:
-        return (self.landmarks[28], self.landmarks[27])
-
-    @property
-    def heels(self) -> Tuple[Landmark, Landmark]:
-        return (self.landmarks[30], self.landmarks[29])
+        if len(self.landmarks) == 17:
+            return (self.landmarks[5], self.landmarks[6])
+        else:
+            return (self.landmarks[12], self.landmarks[11])
 
     @property
     def elbows(self) -> Tuple[Landmark, Landmark]:
-        return (self.landmarks[14], self.landmarks[13])
+        if len(self.landmarks) == 17:
+            return (self.landmarks[7], self.landmarks[8])
+        else:
+            return (self.landmarks[14], self.landmarks[13])
 
     @property
     def wrists(self) -> Tuple[Landmark, Landmark]:
-        return (self.landmarks[16], self.landmarks[15])
-
-    @cached_property
-    def head(self) -> Composite:
-        return Composite(
-            landmarks=self.landmarks[0:11],
-        )
-
-    @cached_property
-    def torso(self) -> Composite:
-        return Composite(
-            landmarks=(
-                self.landmarks[11],
-                self.landmarks[12],
-                self.landmarks[24],
-                self.landmarks[23],
-            )
-        )
+        if len(self.landmarks) == 17:
+            return (self.landmarks[9], self.landmarks[10])
+        else:
+            return (self.landmarks[16], self.landmarks[15])
 
     @cached_property
     def legs(self) -> Tuple[Composite, Composite]:
         return (
-            Composite(
-                landmarks=(self.landmarks[24], self.landmarks[26], self.landmarks[28])
-            ),
-            Composite(
-                landmarks=(self.landmarks[23], self.landmarks[25], self.landmarks[27])
-            ),
+            Composite(landmarks=(self.hips[0], self.knees[0], self.ankles[0])),
+            Composite(landmarks=(self.hips[1], self.knees[1], self.ankles[1])),
         )
 
     @cached_property
     def feet(self) -> Tuple[Composite, Composite]:
-        return (
-            Composite(
-                landmarks=(self.landmarks[28], self.landmarks[30], self.landmarks[32])
-            ),
-            Composite(
-                landmarks=(self.landmarks[27], self.landmarks[29], self.landmarks[31])
-            ),
-        )
+        if len(self.landmarks) == 17:
+            return (
+                Composite(landmarks=(self.ankles[0],)),
+                Composite(landmarks=(self.ankles[1],)),
+            )
+        else:
+            return (
+                Composite(
+                    landmarks=(self.ankles[0], self.landmarks[30], self.landmarks[32])
+                ),
+                Composite(
+                    landmarks=(self.ankles[1], self.landmarks[29], self.landmarks[31])
+                ),
+            )
+
+    @property
+    def hips(self) -> Tuple[Landmark, Landmark]:
+        if len(self.landmarks) == 17:
+            return (self.landmarks[11], self.landmarks[12])
+        else:
+            return (self.landmarks[24], self.landmarks[23])
+
+    @property
+    def knees(self) -> Tuple[Landmark, Landmark]:
+        if len(self.landmarks) == 17:
+            return (self.landmarks[13], self.landmarks[14])
+        else:
+            return (self.landmarks[26], self.landmarks[25])
+
+    @property
+    def ankles(self) -> Tuple[Landmark, Landmark]:
+        if len(self.landmarks) == 17:
+            return (self.landmarks[15], self.landmarks[16])
+        else:
+            return (self.landmarks[28], self.landmarks[27])
 
     def update(self, pose: Self, delta: float) -> "Pose":
-        return Pose(
-            landmarks=tuple(
+        if self.frames < 5:
+            landmarks = self.landmarks
+        else:
+            landmarks = tuple(
                 old.update(new, delta)
                 for old, new in zip(self.landmarks, pose.landmarks)
             )
-        )
+        return Pose(landmarks=landmarks, frames=self.frames + 1)
 
     def move(self, motion: Vector) -> "Pose":
         return Pose(
@@ -599,7 +610,7 @@ class Detector:
     def players(self) -> Cells[Sequence[Player]]:
         return self._players
 
-    def _load_hands(self) -> GestureRecognizer:
+    def _mediapipe_hands(self) -> GestureRecognizer:
         return GestureRecognizer.create_from_options(
             GestureRecognizerOptions(
                 base_options=BaseOptions(
@@ -616,7 +627,7 @@ class Detector:
             )
         )
 
-    def _load_poses(self) -> PoseLandmarker:
+    def _mediapipe_poses(self) -> PoseLandmarker:
         return PoseLandmarker.create_from_options(
             PoseLandmarkerOptions(
                 base_options=BaseOptions(
@@ -633,15 +644,29 @@ class Detector:
             )
         )
 
+    def _yolo_pose(self) -> YOLO:
+        return YOLO(_model_path("yolo", "yolo11x-pose.pt")).cuda()
+
     def _run_hands(self):
-        with self._load_hands() as _model, self._hands as _hands, self._frame.spawn() as _frame:
+        with self._mediapipe_hands() as _model, self._hands as _hands, self._frame.spawn() as _frame:
             for frame, time in _frame.pops():
                 image = Image(ImageFormat.SRGB, frame)
                 with measure.block("Hands"):
                     result = _model.recognize_for_video(image, time)
                     _hands.set(
                         tuple(
-                            Hand.new(landmarks, handedness[0], gestures[0])
+                            Hand.new(
+                                (
+                                    (
+                                        landmark.x or 0.0,
+                                        landmark.y or 0.0,
+                                        landmark.z or 0.0,
+                                    )
+                                    for landmark in landmarks
+                                ),
+                                handedness[0],
+                                gestures[0],
+                            )
                             for landmarks, handedness, gestures in zip(
                                 result.hand_landmarks,
                                 result.handedness,
@@ -651,12 +676,23 @@ class Detector:
                     )
 
     def _run_poses(self):
-        with self._load_poses() as _model, self._poses as _poses, self._frame.spawn() as _frame:
-            for frame, time in _frame.pops():
-                image = Image(ImageFormat.SRGB, frame)
+        _model = self._yolo_pose()
+        with self._poses as _poses, self._frame.spawn() as _frame:
+            for frame, _ in _frame.pops():
                 with measure.block("Poses"):
-                    result = _model.detect_for_video(image, time)
-                    _poses.set(tuple(map(Pose.new, result.pose_landmarks)))
+                    _poses.set(
+                        tuple(
+                            Pose.new(
+                                (float(landmark[0]), float(landmark[1]), 0.0)
+                                for landmark in landmarks
+                            )
+                            for result in _model.predict(frame, True)
+                            if result.keypoints and result.keypoints.has_visible
+                            for landmarks in result.keypoints.xyn
+                        )
+                    )
+                    # result = _model.detect_for_video(image, time)
+                    # _poses.set(tuple(map(Pose.new, result.pose_landmarks)))
 
     def _run_players(self):
         _players = tuple(
@@ -746,9 +782,6 @@ def _model_path(folder: Union[Literal["mediapipe"], Literal["yolo"]], name: str)
 #     y = (0, size) if x else (height - size, height)
 #     return numpy.array(frame[y[0] : y[1], x[0] : x[1], :])
 
-# @cached_property
-# def _yolo_pose(self) -> YOLO:
-#     return YOLO(_model_path("yolo", "yolo11n-pose.pt")).cuda()
 
 # @cached_property
 # def _yolo_object(self) -> YOLO:
