@@ -687,14 +687,12 @@ class Detector:
                                 for landmark in landmarks
                             )
                             for result in _model.predict(
-                                frame, stream=True, conf=self._confidence
+                                frame, stream=True, conf=self._confidence, verbose=False
                             )
                             if result.keypoints and result.keypoints.has_visible
                             for landmarks in result.keypoints.xyn
                         )
                     )
-                    # result = _model.detect_for_video(image, time)
-                    # _poses.set(tuple(map(Pose.new, result.pose_landmarks)))
 
     def _run_players(self):
         _players = tuple(
