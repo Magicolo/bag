@@ -2,6 +2,7 @@ from copy import copy
 from dataclasses import dataclass
 from enum import IntEnum
 from functools import cached_property
+from itertools import chain
 from pathlib import Path
 from time import perf_counter
 from typing import (
@@ -683,14 +684,26 @@ class Detector:
                     _poses.set(
                         tuple(
                             Pose.new(
-                                (float(landmark[0]), float(landmark[1]), 0.0)
-                                for landmark in landmarks
+                                chain(
+                                    (
+                                        (float(landmark[0]), float(landmark[1]), 0.0)
+                                        for landmark in landmarks
+                                    ),
+                                    (
+                                        (float(bounds[0]), float(bounds[1]), 0.0),
+                                        (float(bounds[2]), float(bounds[3]), 0.0),
+                                    ),
+                                )
                             )
                             for result in _model.predict(
                                 frame, stream=True, conf=self._confidence, verbose=False
                             )
-                            if result.keypoints and result.keypoints.has_visible
-                            for landmarks in result.keypoints.xyn
+                            if result.boxes
+                            and result.keypoints
+                            and result.keypoints.has_visible
+                            for landmarks, bounds in zip(
+                                result.keypoints.xyn, result.boxes.xyxyn
+                            )
                         )
                     )
 

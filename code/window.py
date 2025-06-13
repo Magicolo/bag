@@ -11,11 +11,11 @@ from cv2 import (
     line,
     namedWindow,
     pollKey,
+    rectangle,
     resize,
     resizeWindow,
 )
 from cv2.typing import MatLike, Scalar
-
 from cell import Cells
 from utility import run
 from detect import Hand, Landmark, Player, Pose
@@ -79,6 +79,7 @@ class Window:
                 for frame, _ in _frame.pops():
                     with measure.block("Window"):
                         if _draw:
+                            height, width, _ = frame.shape
                             hands, poses = (_hands.pop(), _poses.pop())
                             for hand in hands:
                                 frame = _draw_landmarks(
@@ -87,6 +88,14 @@ class Window:
                             for pose in poses:
                                 frame = _draw_landmarks(
                                     frame, pose.landmarks, (), (255, 0, 0)
+                                )
+                                low, high = pose.bound
+                                frame = rectangle(
+                                    frame,
+                                    (int(low[0] * width), int(low[1] * height)),
+                                    (int(high[0] * width), int(high[1] * height)),
+                                    (0, 255, 0),
+                                    2,
                                 )
 
                             frame = cvtColor(frame, COLOR_RGB2BGR, frame)

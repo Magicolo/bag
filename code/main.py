@@ -15,5 +15,5 @@ with Camera() as camera, Detector(camera.frame) as detector, Window(
         inputs = receive.pop()
         if inputs.exit:
             break
-        elif index % 10 == 0:
-            measure.flush()
+        elif index % 1000 == 0:
+            print(measure.flush())

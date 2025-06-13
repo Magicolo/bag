@@ -49,7 +49,7 @@ def iterate(key: str, iterable: Iterable[_T]) -> Iterable[_T]:
             yield value
 
 
-def flush():
+def flush() -> str:
     global _LOCK, _REGISTER
 
     register = {}
@@ -58,9 +58,6 @@ def flush():
             if values:
                 register[key] = sum(values), len(values)
                 values.clear()
-    print(
-        " | ".join(
-            f"{key}({count}): {sum / count:.5f}s"
-            for key, (sum, count) in register.items()
-        )
+    return " | ".join(
+        f"{key}({count}): {sum / count:.5f}s" for key, (sum, count) in register.items()
     )

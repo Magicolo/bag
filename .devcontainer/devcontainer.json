@@ -3,28 +3,10 @@
     "containerUser": "ubuntu",
     "remoteUser": "ubuntu",
     "remoteEnv": {
-        "COMPOSE_BAKE": "true",
-        "PULSE_SERVER": "unix:${localEnv:XDG_RUNTIME_DIR}/pulse/native",
-        "DISPLAY": "${localEnv:DISPLAY}",
-        "XAUTHORITY": "${localEnv:XAUTHORITY}",
-        "XDG_RUNTIME_DIR": "${localEnv:XDG_RUNTIME_DIR}",
-        "NVIDIA_DRIVER_CAPABILITIES": "compute,graphics,video,utility",
-        "NVIDIA_VISIBLE_DEVICES": "all",
-        "__NV_PRIME_RENDER_OFFLOAD": "1",
-        "__GLX_VENDOR_LIBRARY_NAME": "nvidia",
-        "__VK_LAYER_NV_optimus": "NVIDIA_only"
+        "DISPLAY": "${localEnv:DISPLAY}"
     },
     "containerEnv": {
-        "COMPOSE_BAKE": "true",
-        "PULSE_SERVER": "unix:${localEnv:XDG_RUNTIME_DIR}/pulse/native",
-        "DISPLAY": "${localEnv:DISPLAY}",
-        "XAUTHORITY": "${localEnv:XAUTHORITY}",
-        "XDG_RUNTIME_DIR": "${localEnv:XDG_RUNTIME_DIR}",
-        "NVIDIA_DRIVER_CAPABILITIES": "compute,graphics,video,utility",
-        "NVIDIA_VISIBLE_DEVICES": "all",
-        "__NV_PRIME_RENDER_OFFLOAD": "1",
-        "__GLX_VENDOR_LIBRARY_NAME": "nvidia",
-        "__VK_LAYER_NV_optimus": "NVIDIA_only"
+        "DISPLAY": "${localEnv:DISPLAY}"
     },
     "mounts": [
         {
@@ -46,27 +28,15 @@
             "source": "/tmp/.X11-unix",
             "target": "/tmp/.X11-unix",
             "type": "bind"
-        },
-        {
-            "source": "${localEnv:XDG_RUNTIME_DIR}",
-            "target": "${localEnv:XDG_RUNTIME_DIR}",
-            "type": "bind"
-        },
-        {
-            "source": "/run/user/1000/pulse/native",
-            "target": "/run/pulse/native",
-            "type": "bind"
         }
     ],
     "runArgs": [
         "--gpus=all",
-        "--privileged",
         "--device=/dev/video0",
         "--device=/dev/video1",
         "--device=/dev/bus/usb",
         "--device=/dev/snd",
-        "--device=/dev/dri:/dev/dri",
-        "--cap-add=SYS_NICE"
+        "--device=/dev/dri:/dev/dri"
     ],
     "features": {
         "ghcr.io/devcontainers/features/common-utils": {},
