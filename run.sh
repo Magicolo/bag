@@ -1,3 +1,4 @@
 folder=$(realpath "$(dirname $0)")
 
-nice -n -20 ionice -c1 -n0 chrt -f 99 python "$folder/code/main.py"
+pactl load-module module-alsa-sink device=hw:4,0 sink_name=usb7d
+python "$folder/code/main.py"

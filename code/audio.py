@@ -4,15 +4,27 @@ from math import sqrt
 from pathlib import Path
 from runpy import run_path
 from time import perf_counter
-from typing import Callable, ClassVar, Iterable, List, Optional, Sequence, Set, Tuple
+from typing import (
+    Any,
+    Callable,
+    ClassVar,
+    Iterable,
+    List,
+    Mapping,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+)
 
-from pyo import Server, PyoObject, Sine, Pan, SigTo, Freeverb, Delay, midiToHz, hzToMidi, pa_get_output_devices  # type: ignore
+from pyo import Server, PyoObject, Sine, Pan, SigTo, Freeverb, Delay, midiToHz, hzToMidi  # type: ignore
 from cell import Cells
 from window import Inputs
 from detect import Gesture, Hand, Pose
 import measure
 from utility import clamp, cut, debug, lerp, run
 import vector
+from pyaudio import PyAudio
 
 
 # TODO: Require some gesture to start the interaction (an open palm?)?
@@ -60,7 +72,7 @@ class Sound:
 
 
 class Instrument:
-    def __init__(self, factory: Factory):
+    def __init__(self, factory: Factory, channels: int):
         self._factory = factory
         self._frequency = SigTo(0.0)
         self._amplitude = SigTo(0.0, time=0.25)
@@ -71,7 +83,7 @@ class Instrument:
         self._synthesizer = Pan(
             Freeverb(self._base, size=0.9, bal=0.1, mul=self._reverb)  # type: ignore
             + Delay(self._base, delay=[0.13, 0.19, 0.23], feedback=0.75, mul=self._delay),  # type: ignore
-            outs=_CHANNELS,  # type: ignore
+            outs=channels,
             pan=self._pan,  # type: ignore
         ).out()
 
@@ -191,7 +203,9 @@ class Audio:
                             while len(_instruments) < len(sounds):
                                 index = len(_instruments)
                                 factory = _factories[(index // 5) % len(_factories)]
-                                _instruments.append(Instrument(factory))
+                                _instruments.append(
+                                    Instrument(factory, _server.getNchnls())
+                                )
 
                             attenuate = sqrt(clamp(1 / (len(sounds) + 1))) / 100
                             for instrument, sound in zip(_instruments, sounds):
@@ -214,15 +228,18 @@ def _initialize(server: Optional[Server] = None) -> Server:
         server.stop()
         server.shutdown()
 
+    device = _device("icusbaudio7d", "analog") or {}
     server = Server(
-        sr=48000,
+        audio="portaudio",
+        sr=device.get("defaultSampleRate") or 44100,
         duplex=0,
         ichnls=0,
-        nchnls=_CHANNELS,
+        nchnls=device.get("maxOutputChannels") or 2,
         buffersize=256,
     )
     try:
-        server.setInOutDevice(_device("usb audio", "analog"))
+        server.setInOutDevice(device.get("index"))
+        server.setVerbosity(4)
         return server.boot().start()
     except Exception:
         server.stop()
@@ -318,12 +335,25 @@ def _sounds(delta: float, hands: Sequence[Hand]) -> Iterable[Sound]:
             )
 
 
-def _device(*patterns: str) -> Optional[int]:
-    devices = debug(pa_get_output_devices(), "=> Available Audio Devices: ")
-    for pattern in patterns:
-        for name, index in zip(*devices):
-            if pattern.lower() in name.lower():
-                return debug(index, f"=> Using Audio Device: {name}[", "]")
+def _device(*patterns: str) -> Optional[Mapping[str, Any]]:
+    audio = PyAudio()
+    try:
+        devices = tuple(
+            audio.get_device_info_by_index(index)
+            for index in range(audio.get_device_count())
+        )
+        print(
+            "=> Available Audio Output Devices: ",
+            *(device.get("name") for device in devices),
+        )
+
+        for pattern in patterns:
+            for device in devices:
+                name = f"{device.get("name", "")}"
+                if pattern.lower() in name.lower():
+                    return debug(device, f"=> Using Audio Device: {name}[", "]")
+    finally:
+        audio.terminate()
 
 
 def _note(frequency: float, scale: Sequence[int]) -> float:

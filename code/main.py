@@ -5,6 +5,7 @@ from window import Window
 from detect import Detector
 import measure
 
+
 with Camera() as camera, Detector(camera.frame) as detector, Window(
     camera.frame, detector.players, detector.hands, detector.poses
 ) as window, Audio(
