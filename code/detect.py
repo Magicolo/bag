@@ -120,7 +120,7 @@ class Landmark:
         return vector.magnitude(self.velocity)
 
     def update(self, landmark: Self, delta: float) -> "Landmark":
-        position = vector.lerp(self.position, landmark.position, 0.25)
+        position = vector.lerp(self.position, landmark.position, 0.1)
         return Landmark(
             position=position,
             velocity=vector.divide(vector.subtract(position, self.position), delta),
@@ -191,7 +191,14 @@ class Composite:
 
 
 @dataclass(frozen=True)
-class Finger(Composite):
+class Line(Composite):
+    @cached_property
+    def length(self) -> float:
+        return vector.distance(*(landmark.position for landmark in self.landmarks))
+
+
+@dataclass(frozen=True)
+class Finger(Line):
     name: str
 
     @property
@@ -211,10 +218,6 @@ class Finger(Composite):
         return self.landmarks[3]
 
     @cached_property
-    def length(self) -> float:
-        return vector.distance(*(landmark.position for landmark in self.landmarks))
-
-    @cached_property
     def angle(self) -> float:
         return vector.angle(self.tip.position, self.dip.position, self.base.position)
 
@@ -228,10 +231,6 @@ class Hand(Composite):
     DEFAULT: ClassVar[Self]
     LEFT: ClassVar[Self]
     RIGHT: ClassVar[Self]
-    CONNECTIONS: ClassVar[Sequence[Tuple[int, int]]] = tuple(
-        (connection.start, connection.end)
-        for connection in HandLandmarksConnections.HAND_CONNECTIONS
-    )
 
     @staticmethod
     def new(
@@ -340,6 +339,13 @@ class Hand(Composite):
     def wrist(self) -> Landmark:
         return self.landmarks[HandLandmark.WRIST]
 
+    @property
+    def connections(self) -> Sequence[Tuple[Landmark, Landmark]]:
+        return tuple(
+            (self.landmarks[connection.start], self.landmarks[connection.end])
+            for connection in HandLandmarksConnections.HAND_CONNECTIONS
+        )
+
     def triangle(self, hand: Self) -> bool:
         if self == hand or self.handedness == hand.handedness:
             return False
@@ -426,11 +432,11 @@ class Pose(Composite):
         return self.landmarks[0]
 
     @cached_property
-    def mouth(self) -> Composite:
+    def mouth(self) -> Line:
         if len(self.landmarks) == 17:
-            return Composite(landmarks=())
+            return Line(landmarks=())
         else:
-            return Composite(landmarks=(self.landmarks[9], self.landmarks[10]))
+            return Line(landmarks=(self.landmarks[9], self.landmarks[10]))
 
     @property
     def ears(self) -> Tuple[Landmark, Landmark]:
@@ -446,10 +452,10 @@ class Pose(Composite):
         )
 
     @cached_property
-    def arms(self) -> Tuple[Composite, Composite]:
+    def arms(self) -> Tuple[Line, Line]:
         return (
-            Composite(landmarks=(self.shoulders[0], self.elbows[0], self.wrists[0])),
-            Composite(landmarks=(self.shoulders[1], self.elbows[1], self.wrists[1])),
+            Line(landmarks=(self.shoulders[0], self.elbows[0], self.wrists[0])),
+            Line(landmarks=(self.shoulders[1], self.elbows[1], self.wrists[1])),
         )
 
     @cached_property
@@ -501,10 +507,10 @@ class Pose(Composite):
             return (self.landmarks[16], self.landmarks[15])
 
     @cached_property
-    def legs(self) -> Tuple[Composite, Composite]:
+    def legs(self) -> Tuple[Line, Line]:
         return (
-            Composite(landmarks=(self.hips[0], self.knees[0], self.ankles[0])),
-            Composite(landmarks=(self.hips[1], self.knees[1], self.ankles[1])),
+            Line(landmarks=(self.hips[0], self.knees[0], self.ankles[0])),
+            Line(landmarks=(self.hips[1], self.knees[1], self.ankles[1])),
         )
 
     @cached_property
@@ -544,6 +550,27 @@ class Pose(Composite):
             return (self.landmarks[15], self.landmarks[16])
         else:
             return (self.landmarks[28], self.landmarks[27])
+
+    @property
+    def connections(self) -> Sequence[Tuple[Landmark, Landmark]]:
+        return (
+            (self.shoulders[0], self.shoulders[1]),
+            (self.hips[0], self.hips[1]),
+            #########################
+            (self.ears[0], self.nose),
+            (self.elbows[0], self.wrists[0]),
+            (self.shoulders[0], self.elbows[0]),
+            (self.shoulders[0], self.hips[0]),
+            (self.hips[0], self.knees[0]),
+            (self.knees[0], self.ankles[0]),
+            #########################
+            (self.ears[1], self.nose),
+            (self.elbows[1], self.wrists[1]),
+            (self.shoulders[1], self.elbows[1]),
+            (self.shoulders[1], self.hips[1]),
+            (self.hips[1], self.knees[1]),
+            (self.knees[1], self.ankles[1]),
+        )
 
     def update(self, pose: Self, delta: float) -> "Pose":
         if self.frames < 5:
@@ -689,10 +716,10 @@ class Detector:
                                         (float(landmark[0]), float(landmark[1]), 0.0)
                                         for landmark in landmarks
                                     ),
-                                    (
-                                        (float(bounds[0]), float(bounds[1]), 0.0),
-                                        (float(bounds[2]), float(bounds[3]), 0.0),
-                                    ),
+                                    # (
+                                    #     (float(bounds[0]), float(bounds[1]), 0.0),
+                                    #     (float(bounds[2]), float(bounds[3]), 0.0),
+                                    # ),
                                 )
                             )
                             for result in _model.predict(
@@ -701,7 +728,7 @@ class Detector:
                             if result.boxes
                             and result.keypoints
                             and result.keypoints.has_visible
-                            for landmarks, bounds in zip(
+                            for landmarks, box in zip(
                                 result.keypoints.xyn, result.boxes.xyxyn
                             )
                         )
