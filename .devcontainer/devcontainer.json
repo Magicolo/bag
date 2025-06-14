@@ -1,13 +1,9 @@
 {
-    "dockerFile": "Dockerfile",
+    "dockerComposeFile": "docker-compose.yml",
+    "service": "bag",
+    "workspaceFolder": "/bag",
     "containerUser": "ubuntu",
     "remoteUser": "ubuntu",
-    "remoteEnv": {
-        "DISPLAY": "${localEnv:DISPLAY}"
-    },
-    "containerEnv": {
-        "DISPLAY": "${localEnv:DISPLAY}"
-    },
     "mounts": [
         {
             "source": "${localEnv:HOME}/.ssh",
@@ -23,20 +19,7 @@
             "source": "${localEnv:HOME}/.docker",
             "target": "/home/ubuntu/.docker",
             "type": "bind"
-        },
-        {
-            "source": "/tmp/.X11-unix",
-            "target": "/tmp/.X11-unix",
-            "type": "bind"
         }
-    ],
-    "runArgs": [
-        "--gpus=all",
-        "--device=/dev/video0",
-        "--device=/dev/video1",
-        "--device=/dev/bus/usb",
-        "--device=/dev/snd",
-        "--device=/dev/dri:/dev/dri"
     ],
     "features": {
         "ghcr.io/devcontainers/features/common-utils": {},

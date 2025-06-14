@@ -1,0 +1,17 @@
+services:
+  bag:
+    image: bag
+    build: .
+    entrypoint: sleep infinity
+    environment:
+      - DISPLAY=$DISPLAY
+    volumes:
+      - ..:/bag
+      - /tmp/.X11-unix:/tmp/.X11-unix
+    gpus: all
+    devices:
+      - /dev/video0:/dev/video0
+      - /dev/video1:/dev/video1
+      - /dev/bus/usb:/dev/bus/usb
+      - /dev/snd:/dev/snd
+      - /dev/dri:/dev/dri

@@ -120,7 +120,7 @@ class Landmark:
         return vector.magnitude(self.velocity)
 
     def update(self, landmark: Self, delta: float) -> "Landmark":
-        position = vector.lerp(self.position, landmark.position, 0.5)
+        position = vector.lerp(self.position, landmark.position, 0.25)
         return Landmark(
             position=position,
             velocity=vector.divide(vector.subtract(position, self.position), delta),
@@ -794,10 +794,3 @@ def _model_path(folder: Union[Literal["mediapipe"], Literal["yolo"]], name: str)
 #     x = (0, size) if y else (width - size, width)
 #     y = (0, size) if x else (height - size, height)
 #     return numpy.array(frame[y[0] : y[1], x[0] : x[1], :])
-
-
-# @cached_property
-# def _yolo_object(self) -> YOLO:
-#     model = YOLO(_model_path("yolo", "yolo12l.pt")).cuda()
-#     model.fuse()
-#     return model
