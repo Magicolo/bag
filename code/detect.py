@@ -2,7 +2,6 @@ from copy import copy
 from dataclasses import dataclass
 from enum import IntEnum
 from functools import cached_property
-from itertools import chain
 from pathlib import Path
 from time import perf_counter
 from typing import (
@@ -603,7 +602,7 @@ class Detector:
         frame: Cells[Tuple[MatLike, int]],
         players=4,
         device: BaseOptions.Delegate = BaseOptions.Delegate.CPU,
-        confidence: float = 0.25,
+        confidence: float = 0.5,
     ):
         self._frame = frame
         self._count = players
@@ -711,16 +710,10 @@ class Detector:
                     _poses.set(
                         tuple(
                             Pose.new(
-                                chain(
-                                    (
-                                        (float(landmark[0]), float(landmark[1]), 0.0)
-                                        for landmark in landmarks
-                                    ),
-                                    # (
-                                    #     (float(bounds[0]), float(bounds[1]), 0.0),
-                                    #     (float(bounds[2]), float(bounds[3]), 0.0),
-                                    # ),
-                                )
+                                (
+                                    (float(landmark[0]), float(landmark[1]), 0.0)
+                                    for landmark in landmarks
+                                ),
                             )
                             for result in _model.predict(
                                 frame, stream=True, conf=self._confidence, verbose=False
@@ -728,9 +721,7 @@ class Detector:
                             if result.boxes
                             and result.keypoints
                             and result.keypoints.has_visible
-                            for landmarks, box in zip(
-                                result.keypoints.xyn, result.boxes.xyxyn
-                            )
+                            for landmarks in result.keypoints.xyn
                         )
                     )
 

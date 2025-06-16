@@ -9,7 +9,7 @@ def new(frequency: PyoObject, amplitude: PyoObject) -> PyoObject:
             Change(frequency),
             table=LinTable([(0, 0), (100, 1), (500, 0.2), (8191, 0)]),
             dur=0.2,
-            mul=amplitude * 4.0,
+            mul=amplitude * 2.0,
         ),
     )
 
