@@ -118,7 +118,7 @@ class Window:
                                     _image,
                                     pose.landmarks,
                                     pose.connections,
-                                    _color(0.25, index / 3),
+                                    _color(0.25, index / 3, 0.5, 0.5),
                                     2,
                                 )
 
@@ -154,8 +154,8 @@ class Window:
             destroyWindow(self._name)
 
 
-def _color(speed: float, offset: float) -> Scalar:
-    color = colorsys.hsv_to_rgb(time() * speed + offset, 1.0, 1.0)
+def _color(speed: float, offset: float, saturation=1.0, brightness=1.0) -> Scalar:
+    color = colorsys.hsv_to_rgb(time() * speed + offset, saturation, brightness)
     return (
         int(color[0] * 255),
         int(color[1] * 255),

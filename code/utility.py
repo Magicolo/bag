@@ -16,11 +16,11 @@ def debug(value: _T, pre: str = "", post: str = "", wrap: str = "") -> _T:
     return value
 
 
-def clamp(value: float, minimum: float = 0, maximum: float = 1) -> float:
+def clamp(value: float, minimum: float = 0.0, maximum: float = 1.0) -> float:
     return max(minimum, min(maximum, value))
 
 
-def cut(value: float, floor: float, default: float = 0):
+def cut(value: float, floor: float, default: float = 0.0) -> float:
     return default if value < floor else value
 
 

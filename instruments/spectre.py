@@ -3,10 +3,10 @@ from pyo import PyoObject, Noise, PinkNoise, Reson, Mix, Sine
 
 def new(frequency: PyoObject, amplitude: PyoObject) -> PyoObject:
     vibrate = Sine(freq=5, mul=2.5, add=0)
-    noise = Noise(mul=amplitude * 5) + PinkNoise(mul=amplitude * 2.5)
+    noise = Noise(mul=amplitude * 32) + PinkNoise(mul=amplitude * 16)
     bell = Mix(
         [
-            Reson(noise, freq=(frequency * ratio) + vibrate * index, q=50 + index * 25)
+            Reson(noise, freq=(frequency * ratio) + vibrate * index, q=64 + index * 32)
             for index, ratio in enumerate((1.00, 2.00, 2.72, 3.99, 5.28))
         ],
         voices=2,

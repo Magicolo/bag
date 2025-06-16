@@ -2,11 +2,13 @@ from dataclasses import dataclass
 from enum import Enum
 from math import sqrt
 from pathlib import Path
+from random import randrange
 from runpy import run_path
 from time import perf_counter
 from typing import (
     Callable,
     ClassVar,
+    Dict,
     Iterable,
     List,
     Optional,
@@ -20,7 +22,7 @@ from cell import Cells
 from window import Inputs
 from detect import Gesture, Hand, Pose
 import measure
-from utility import clamp, cut, lerp, run
+from utility import clamp, cut, debug, lerp, run
 import vector
 
 
@@ -68,15 +70,16 @@ class Sound:
 
 
 class Instrument:
-    def __init__(self, factory: Factory, channels: int):
+    def __init__(self, factory: Factory):
         self._factory = factory
+        self._mute = False
         self._frequency = SigTo(0.0)
         self._amplitude = SigTo(0.0, time=0.25)
         self._pan = SigTo(0.5)
         self._reverb = SigTo(1.0)
         self._delay = SigTo(0.0)
         self._base = self._factory.new(self._frequency, self._amplitude)
-        self._synthesizer = Pan(Freeverb(self._base, size=0.9, bal=0.1, mul=self._reverb) + Delay(self._base, delay=[0.13, 0.19, 0.23], feedback=0.75, mul=self._delay), outs=channels, pan=self._pan).out()  # type: ignore
+        self._synthesizer = Pan(Freeverb(self._base, size=0.9, bal=0.1, mul=self._reverb) + Delay(self._base, delay=[0.13, 0.19, 0.23], feedback=0.75, mul=self._delay), outs=2, pan=self._pan).out()  # type: ignore
 
     @property
     def amplitude(self):
@@ -98,24 +101,26 @@ class Instrument:
     def delay(self):
         return self._delay.value
 
+    def update(self, sound: Sound, attenuate: float):
+        self._frequency.value = _note(sound.frequency, sound.notes)
+        self._frequency.time = sound.glide
+        self._amplitude.value = sound.amplitude * attenuate
+        self._pan.value = sound.pan
+        self._reverb.value = clamp(1.0 - sound.echo)
+        self._delay.value = clamp(sound.echo) * 5
+        self._mute = False
+
+    def mute(self) -> bool:
+        if self._mute:
+            return True
+        else:
+            self._mute = True
+            self._amplitude.value = 0.0
+            return False
+
     def stop(self):
+        self.mute()
         self._synthesizer.stop()
-
-    def fade(self, volume: float):
-        self._amplitude.value = volume
-
-    def spatialize(self, pan: float):
-        self._pan.value = pan
-
-    def shift(self, frequency: float):
-        self._frequency.value = frequency
-
-    def glide(self, glide: float):
-        self._frequency.time = glide
-
-    def echo(self, echo: float):
-        self._reverb.value = clamp(1.0 - echo)
-        self._delay.value = clamp(echo) * 5
 
 
 class Audio:
@@ -154,8 +159,8 @@ class Audio:
 
     def _run(self):
         _server, _hum = _initialize()
-        _instruments: List[Instrument] = []
-        _factories = _load(_instruments)
+        _groups: Dict[int, Tuple[Factory, List[Instrument]]] = {}
+        _factories = _load(_groups)
         _old = tuple()
         _now = None
         _then = None
@@ -177,30 +182,33 @@ class Audio:
                     with measure.block("Audio"):
                         if inputs.reset:
                             print("=> Resetting Instruments")
-                            _factories = _load(_instruments)
+                            _factories = _load(_groups)
                         elif inputs.mute:
-                            for instrument in _instruments:
-                                instrument.fade(0)
+                            for _, instruments in _groups.values():
+                                for instrument in instruments:
+                                    instrument.mute()
                         else:
+                            has = set()
                             sounds = tuple(_sounds(delta, hands))
-                            while len(_instruments) < len(sounds):
-                                index = len(_instruments)
-                                factory = _factories[(index // 5) % len(_factories)]
-                                _instruments.append(
-                                    Instrument(factory, _server.getNchnls())
-                                )
-
                             attenuate = sqrt(clamp(1 / (len(sounds) + 1))) / 25
-                            for instrument, sound in zip(_instruments, sounds):
-                                frequency = _note(sound.frequency, sound.notes)
-                                instrument.glide(sound.glide)
-                                instrument.echo(sound.echo)
-                                instrument.shift(frequency)
-                                instrument.spatialize(sound.pan)
-                                instrument.fade(sound.amplitude * attenuate)
+                            for group, index, sound in sounds:
+                                has.add(group)
+                                factory, instruments = _groups.setdefault(
+                                    group, (_factories[randrange(len(_factories))], [])
+                                )
+                                while index >= len(instruments):
+                                    instruments.append(Instrument(factory))
 
-                            for instrument in _instruments[len(sounds) :]:
-                                instrument.fade(0)
+                                instruments[index].update(debug(sound), attenuate)
+
+                            for group, (_, instruments) in tuple(_groups.items()):
+                                if group in has:
+                                    continue
+
+                                if all(instrument.mute() for instrument in instruments):
+                                    for instrument in instruments:
+                                        instrument.stop()
+                                    del _groups[group]
         finally:
             _server.stop()
             _server.shutdown()
@@ -220,7 +228,7 @@ def _update(server: Server, hum: PyoObject) -> Tuple[Server, PyoObject]:
         return server, hum
 
 
-def _load(instruments: List[Instrument] = []) -> Sequence[Factory]:
+def _load(groups: Dict[int, Tuple[Factory, List[Instrument]]]) -> Sequence[Factory]:
     def factories() -> Iterable[Factory]:
         for file in sorted(
             Path(__file__).parent.parent.joinpath("instruments").iterdir(),
@@ -233,9 +241,11 @@ def _load(instruments: List[Instrument] = []) -> Sequence[Factory]:
                 if new:
                     yield Factory(new=new, name=name, stamp=stamp)
 
-    for instrument in instruments:
-        instrument.stop()
-    instruments.clear()
+    for _, instruments in groups.values():
+        for instrument in instruments:
+            instrument.stop()
+        instruments.clear()
+    groups.clear()
     return tuple(factories())
 
 
@@ -253,9 +263,9 @@ def _sound(
     floor = scale * delta * 150.0
     range = 1000.0 if scale <= 0.0 else 50.0 / scale
     return Sound(
-        frequency=clamp(1 - y) * range * (index % 5 + 1) + 50.0,
+        frequency=clamp(1.0 - y) * range * (index % 5 + 1) + 50.0,
         amplitude=clamp(cut(speed, floor) * 100.0),
-        pan=clamp(1 - x),
+        pan=clamp(1.0 - x),
         notes=notes,
         glide=lerp(0.025, 0.25, glide),
         echo=echo,
@@ -263,7 +273,7 @@ def _sound(
 
 
 def _secret(
-    delta: float, hand: Hand, hands: Sequence[Hand], skip: Set[Hand]
+    group: int, delta: float, hand: Hand, hands: Sequence[Hand], skip: Set[Hand]
 ) -> Optional[Sound]:
     for other in hands:
         if other in skip:
@@ -276,25 +286,33 @@ def _secret(
             index = int((hand.x + other.x / 2.0) * len(Notes.SECRET))
             note = Notes.SECRET[index % len(Notes.SECRET)]
             return _sound(
-                position[0], position[1], speed, 0.0, 0, False, False, delta, (note,)
+                position[0],
+                position[1],
+                speed,
+                0.0,
+                0,
+                False,
+                False,
+                delta,
+                (note,),
             )
 
 
-def _sounds(delta: float, hands: Sequence[Hand]) -> Iterable[Sound]:
+def _sounds(delta: float, hands: Sequence[Hand]) -> Iterable[Tuple[int, int, Sound]]:
     skip = set()
-    for hand in hands:
+    for group, hand in enumerate(hands):
         if hand in skip:
             continue
 
-        secret = _secret(delta, hand, hands, skip)
+        secret = _secret(group, delta, hand, hands, skip)
         if secret:
-            yield secret
+            yield group, 0, secret
             continue
 
         for index, finger in enumerate(hand.fingers):
             speed = finger.tip.speed * clamp(1.0 - hand.gestures[Gesture.CLOSED_FIST])
 
-            yield _sound(
+            yield group, index, _sound(
                 finger.tip.x,
                 finger.tip.y,
                 speed,
