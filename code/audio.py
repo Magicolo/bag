@@ -80,12 +80,7 @@ class Instrument:
         self._reverb = SigTo(1.0)
         self._delay = SigTo(0.0)
         self._base = self._factory.new(self._frequency, self._amplitude)
-        self._synthesizer = Pan(
-            Freeverb(self._base, size=0.9, bal=0.1, mul=self._reverb)  # type: ignore
-            + Delay(self._base, delay=[0.13, 0.19, 0.23], feedback=0.75, mul=self._delay),  # type: ignore
-            outs=channels,
-            pan=self._pan,  # type: ignore
-        ).out()
+        self._synthesizer = Pan(Freeverb(self._base, size=0.9, bal=0.1, mul=self._reverb) + Delay(self._base, delay=[0.13, 0.19, 0.23], feedback=0.75, mul=self._delay), outs=channels, pan=self._pan).out()  # type: ignore
 
     @property
     def amplitude(self):
@@ -207,7 +202,7 @@ class Audio:
                                     Instrument(factory, _server.getNchnls())
                                 )
 
-                            attenuate = sqrt(clamp(1 / (len(sounds) + 1))) / 100
+                            attenuate = sqrt(clamp(1 / (len(sounds) + 1))) / 25
                             for instrument, sound in zip(_instruments, sounds):
                                 frequency = _note(sound.frequency, sound.notes)
                                 instrument.glide(sound.glide)
@@ -228,23 +223,7 @@ def _initialize(server: Optional[Server] = None) -> Server:
         server.stop()
         server.shutdown()
 
-    device = _device("icusbaudio7d", "analog") or {}
-    server = Server(
-        audio="portaudio",
-        sr=device.get("defaultSampleRate") or 44100,
-        duplex=0,
-        ichnls=0,
-        nchnls=device.get("maxOutputChannels") or 2,
-        buffersize=256,
-    )
-    try:
-        server.setInOutDevice(device.get("index"))
-        server.setVerbosity(4)
-        return server.boot().start()
-    except Exception:
-        server.stop()
-        server.shutdown()
-        raise
+    return Server().boot().start()
 
 
 def _reset(instruments: List[Instrument]) -> Sequence[Factory]:
