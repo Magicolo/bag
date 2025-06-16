@@ -5,12 +5,10 @@ from pathlib import Path
 from runpy import run_path
 from time import perf_counter
 from typing import (
-    Any,
     Callable,
     ClassVar,
     Iterable,
     List,
-    Mapping,
     Optional,
     Sequence,
     Set,
@@ -22,9 +20,8 @@ from cell import Cells
 from window import Inputs
 from detect import Gesture, Hand, Pose
 import measure
-from utility import clamp, cut, debug, lerp, run
+from utility import clamp, cut, lerp, run
 import vector
-from pyaudio import PyAudio
 
 
 # TODO: Require some gesture to start the interaction (an open palm?)?
@@ -33,7 +30,6 @@ from pyaudio import PyAudio
 # TODO: Use handedness to choose the instrument.
 
 
-_CHANNELS = 8
 _PAD = (-1000, -1000, -1000, -1000, -1000)
 
 
@@ -157,7 +153,7 @@ class Audio:
         pass
 
     def _run(self):
-        _server = _initialize()
+        _server, _hum = _initialize()
         _instruments: List[Instrument] = []
         _factories = _load(_instruments)
         _old = tuple()
@@ -170,6 +166,7 @@ class Audio:
                     _now = perf_counter()
                     delta = 0.0 if _then is None else _now - _then
                     _then = _now
+                    _server, _hum = _update(_server, _hum)
 
                     add = tuple(Hand.DEFAULT for _ in range(len(hands) - len(_old)))
                     hands = tuple(
@@ -178,15 +175,6 @@ class Audio:
                     _old = hands
 
                     with measure.block("Audio"):
-                        totals = (
-                            sum(instrument.amplitude for instrument in _instruments),
-                            sum(map(float, _server.getCurrentAmp())),
-                        )
-                        if totals[0] > 0.0 and totals[1] <= 0.0:
-                            print("=> Restarting Server")
-                            _server = _initialize(_server)
-                            _factories = _load(_instruments)
-
                         if inputs.reset:
                             print("=> Resetting Instruments")
                             _factories = _load(_instruments)
@@ -218,12 +206,18 @@ class Audio:
             _server.shutdown()
 
 
-def _initialize(server: Optional[Server] = None) -> Server:
-    if server:
+def _initialize() -> Tuple[Server, PyoObject]:
+    return Server(buffersize=1024).boot().start(), Sine(freq=1, mul=0.001).out()  # type: ignore
+
+
+def _update(server: Server, hum: PyoObject) -> Tuple[Server, PyoObject]:
+    if sum(map(float, server.getCurrentAmp())) <= 0.0:
+        hum.stop()
         server.stop()
         server.shutdown()
-
-    return Server().boot().start()
+        return _initialize()
+    else:
+        return server, hum
 
 
 def _load(instruments: List[Instrument] = []) -> Sequence[Factory]:
@@ -311,27 +305,6 @@ def _sounds(delta: float, hands: Sequence[Hand]) -> Iterable[Sound]:
                 delta,
                 Notes.NATURAL,
             )
-
-
-def _device(*patterns: str) -> Optional[Mapping[str, Any]]:
-    audio = PyAudio()
-    try:
-        devices = tuple(
-            audio.get_device_info_by_index(index)
-            for index in range(audio.get_device_count())
-        )
-        print(
-            "=> Available Audio Output Devices: ",
-            *(device.get("name") for device in devices),
-        )
-
-        for pattern in patterns:
-            for device in devices:
-                name = f"{device.get("name", "")}"
-                if pattern.lower() in name.lower():
-                    return debug(device, f"=> Using Audio Device: {name}[", "]")
-    finally:
-        audio.terminate()
 
 
 def _note(frequency: float, scale: Sequence[int]) -> float:

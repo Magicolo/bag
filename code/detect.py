@@ -601,9 +601,9 @@ class Detector:
     def __init__(
         self,
         frame: Cells[Tuple[MatLike, int]],
-        players=2,
+        players=4,
         device: BaseOptions.Delegate = BaseOptions.Delegate.CPU,
-        confidence: float = 0.5,
+        confidence: float = 0.25,
     ):
         self._frame = frame
         self._count = players
