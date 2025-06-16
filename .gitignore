@@ -1,6 +1,4 @@
-Cargo.lock
-target
-venv
+.local
 **/*.task
 **/*.tflite
 **/*.binarypb
