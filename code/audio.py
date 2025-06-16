@@ -17,12 +17,12 @@ from typing import (
     Tuple,
 )
 
-from pyo import Server, PyoObject, Sine, Pan, SigTo, Freeverb, Delay, midiToHz, hzToMidi  # type: ignore
+from pyo import Server, PyoObject, Sine, Pan, Adsr, SigTo, TrigEnv, Freeverb, ButHP, Mix, ButBP, HannTable, Noise, Delay, midiToHz, hzToMidi  # type: ignore
 from cell import Cells
 from window import Inputs
 from detect import Gesture, Hand, Pose
 import measure
-from utility import clamp, cut, debug, lerp, run
+from utility import clamp, cut, lerp, run
 import vector
 
 
@@ -67,6 +67,26 @@ class Sound:
     notes: Sequence[int]
     glide: float
     echo: float
+
+
+def cymbal() -> Factory:
+    def new(frequency: PyoObject, amplitude: PyoObject) -> PyoObject:
+        env = Adsr(attack=0.001, decay=1.0, sustain=0.2, release=3.0, dur=4.0, mul=amp)
+        env_trig = TrigEnv(trigger, table=HannTable(), dur=0.001, mul=1)
+        env.play(trigger)
+
+        noise = Noise(mul=env * 0.7)
+        freqs = [4000, 6000, 8000, 10000, 12000, 14000]
+        resonators = []
+        for f in freqs:
+            reson = ButBP(noise, freq=f, q=10, mul=0.2)
+            resonators.append(reson)
+
+        wash = ButHP(noise, freq=5000, mul=0.3)
+        crash = Mix(resonators + [wash], voices=2)
+        hit = Noise(mul=env_trig * 0.5)
+        hit = ButHP(hit, freq=8000)  # emphasise the very high end
+        return (crash + hit).out()
 
 
 class Instrument:
@@ -121,6 +141,28 @@ class Instrument:
     def stop(self):
         self.mute()
         self._synthesizer.stop()
+
+
+class Cymbal(Instrument):
+    @staticmethod
+    def _new(frequency: PyoObject, amplitude: PyoObject) -> PyoObject:
+        env = Adsr(attack=0.001, decay=1.0, sustain=0.2, release=3.0, dur=4.0, mul=amp)
+
+        noise = Noise(mul=env * 0.7)
+        freqs = [4000, 6000, 8000, 10000, 12000, 14000]
+        resonators = []
+        for f in freqs:
+            reson = ButBP(noise, freq=f, q=10, mul=0.2)
+            resonators.append(reson)
+
+        wash = ButHP(noise, freq=5000, mul=0.3)
+        crash = Mix(resonators + [wash], voices=2)
+        hit = Noise(mul=env_trig * 0.5)
+        hit = ButHP(hit, freq=8000)  # emphasise the very high end
+        return (crash + hit).out()
+
+    def __init__(self):
+        super().__init__(Factory(Cymbal._new, "cymbal", 0.0))
 
 
 class Audio:
@@ -199,7 +241,7 @@ class Audio:
                                 while index >= len(instruments):
                                     instruments.append(Instrument(factory))
 
-                                instruments[index].update(debug(sound), attenuate)
+                                instruments[index].update(sound, attenuate)
 
                             for group, (_, instruments) in tuple(_groups.items()):
                                 if group in has:
