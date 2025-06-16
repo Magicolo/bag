@@ -159,7 +159,7 @@ class Audio:
     def _run(self):
         _server = _initialize()
         _instruments: List[Instrument] = []
-        _factories = tuple(_load())
+        _factories = _load(_instruments)
         _old = tuple()
         _now = None
         _then = None
@@ -185,11 +185,11 @@ class Audio:
                         if totals[0] > 0.0 and totals[1] <= 0.0:
                             print("=> Restarting Server")
                             _server = _initialize(_server)
-                            _factories = _reset(_instruments)
+                            _factories = _load(_instruments)
 
                         if inputs.reset:
                             print("=> Resetting Instruments")
-                            _factories = _reset(_instruments)
+                            _factories = _load(_instruments)
                         elif inputs.mute:
                             for instrument in _instruments:
                                 instrument.fade(0)
@@ -226,24 +226,23 @@ def _initialize(server: Optional[Server] = None) -> Server:
     return Server().boot().start()
 
 
-def _reset(instruments: List[Instrument]) -> Sequence[Factory]:
+def _load(instruments: List[Instrument] = []) -> Sequence[Factory]:
+    def factories() -> Iterable[Factory]:
+        for file in sorted(
+            Path(__file__).parent.parent.joinpath("instruments").iterdir(),
+            key=lambda file: file.stem,
+        ):
+            if file.is_file() and file.suffix == ".py":
+                name = file.stem
+                stamp = file.stat().st_mtime
+                new = run_path(f"{file}").get("new", None)
+                if new:
+                    yield Factory(new=new, name=name, stamp=stamp)
+
     for instrument in instruments:
         instrument.stop()
     instruments.clear()
-    return tuple(_load())
-
-
-def _load() -> Iterable[Factory]:
-    for file in sorted(
-        Path(__file__).parent.parent.joinpath("instruments").iterdir(),
-        key=lambda file: file.stem,
-    ):
-        if file.is_file() and file.suffix == ".py":
-            name = file.stem
-            stamp = file.stat().st_mtime
-            new = run_path(f"{file}").get("new", None)
-            if new:
-                yield Factory(new=new, name=name, stamp=stamp)
+    return tuple(factories())
 
 
 def _sound(
