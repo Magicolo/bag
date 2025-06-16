@@ -1,13 +1,25 @@
-from pyo import Osc, Mix, PyoObject, SawTable, MoogLP, Sine, Chorus
+from pyo import (
+    Osc,
+    PyoObject,
+    Snap,
+    Metro,
+    TrigEnv,
+    TrigXnoiseMidi,
+    CosTable,
+    SquareTable,
+)
 
 
 def new(frequency: PyoObject, amplitude: PyoObject) -> PyoObject:
-    saw1 = Osc(table=SawTable(order=12), freq=frequency - 0.3, mul=amplitude * 2.0)
-    saw2 = Osc(table=SawTable(order=12), freq=frequency, mul=amplitude * 2.0)
-    saw3 = Osc(table=SawTable(order=12), freq=frequency + 0.3, mul=amplitude * 2.0)
-    cut = Sine(freq=0.05, mul=1000, add=1500)
-    filter = MoogLP(Mix([saw1, saw2, saw3]), freq=cut, res=0.8).mix(2)
-    return Chorus(filter, depth=1.5, feedback=0.2, bal=0.3)
+    beat = Metro(0.05, 8).play()
+    trigger = TrigEnv(
+        beat,
+        table=CosTable([(0, 0), (100, 1), (500, 0.3), (8191, 0)]),
+        mul=amplitude * 4.0,
+    )
+    pitch = TrigXnoiseMidi(beat, dist=4, x1=20, mrange=(48, 84))
+    hertz = Snap(pitch, choice=[0, 2, 3, 5, 7, 8, 10], scale=1)
+    return Osc(table=SquareTable(), freq=frequency * hertz / 25, phase=0, mul=trigger)
 
 
 if __name__ == "__main__":

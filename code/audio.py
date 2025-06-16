@@ -237,7 +237,8 @@ def _load(groups: Dict[int, Tuple[Factory, List[Instrument]]]) -> Sequence[Facto
             if file.is_file() and file.suffix == ".py":
                 name = file.stem
                 stamp = file.stat().st_mtime
-                new = run_path(f"{file}").get("new", None)
+                factory = run_path(f"{file}")
+                new = factory.get("new", None)
                 if new:
                     yield Factory(new=new, name=name, stamp=stamp)
 
