@@ -119,7 +119,7 @@ class Landmark:
         return vector.magnitude(self.velocity)
 
     def update(self, landmark: Self, delta: float) -> "Landmark":
-        position = vector.lerp(self.position, landmark.position, 0.25)
+        position = vector.lerp(self.position, landmark.position, 0.375)
         return Landmark(
             position=position,
             velocity=vector.divide(vector.subtract(position, self.position), delta),
@@ -602,7 +602,7 @@ class Detector:
         frame: Cells[Tuple[MatLike, int]],
         players=4,
         device: BaseOptions.Delegate = BaseOptions.Delegate.CPU,
-        confidence: float = 0.5,
+        confidence: float = 0.25,
     ):
         self._frame = frame
         self._count = players

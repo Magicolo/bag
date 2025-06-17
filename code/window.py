@@ -91,7 +91,9 @@ class Window:
             setWindowProperty(self._name, WND_PROP_FULLSCREEN, WINDOW_FULLSCREEN)
 
             with self._inputs as _send, self._frame.spawn() as _frame, self._hands.spawn() as _hands, self._poses.spawn() as _poses:
-                for frame, _ in _frame.pops():
+                for (frame, _), hands, poses in zip(
+                    _frame.pops(), _hands.gets(), _poses.gets()
+                ):
                     with measure.block("Window"):
                         if _draw:
                             _image = resize(frame, (self._width, self._height), _image)
@@ -101,7 +103,6 @@ class Window:
                             _image = Canny(_image, 50, 150, _image)
                             _image = cvtColor(_image, COLOR_GRAY2BGR, _image)
 
-                            hands, poses = (_hands.pop(), _poses.pop())
                             for index, hand in enumerate(hands):
                                 scale = numpy.mean(
                                     tuple(finger.length * 25 for finger in hand.fingers)
