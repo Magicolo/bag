@@ -119,7 +119,7 @@ class Landmark:
         return vector.magnitude(self.velocity)
 
     def update(self, landmark: Self, delta: float) -> "Landmark":
-        position = vector.lerp(self.position, landmark.position, 0.375)
+        position = vector.lerp(self.position, landmark.position, 0.25)
         return Landmark(
             position=position,
             velocity=vector.divide(vector.subtract(position, self.position), delta),
