@@ -17,7 +17,7 @@ from typing import (
     Tuple,
 )
 
-from pyo import Server, PyoObject, Sine, Pan, SigTo, Freeverb, Delay, midiToHz, hzToMidi  # type: ignore
+from pyo import Server, PyoObject, Sine, Pan, SigTo, Noise, Freeverb, Delay, midiToHz, hzToMidi  # type: ignore
 from cell import Cells
 from window import Inputs
 from detect import Gesture, Hand, Pose
@@ -35,11 +35,6 @@ _MELODIC = (0, 0, 2, 3, 3, 5, 5, 7, 7, 9, 9, 11)
 class Scales(Tuple[int], Enum):
     PENTA = (0, 0, 0, 3, 3, 5, 5, 7, 7, 7, 10, 10)
     NATURAL = (0, 0, 2, 3, 3, 5, 5, 7, 8, 8, 10, 10)
-    THIRD = (3, 3, 5, 5, 7, 8, 8, 10, 10, 12, 12, 14)
-    FIFTH = (7, 8, 8, 10, 10, 12, 12, 14, 16, 16, 18, 18)
-    SEVENTH = (10, 10, 12, 12, 14, 16, 16, 18, 18, 20, 21, 21)
-    THIN = (0, 0, 0, 0, 2, 2, 3, 3, 3, 3, 5, 5)
-    WIDE = (0, 2, 3, 5, 8, 10, 12, 14, 16, 18, 21, 24)
 
 
 @dataclass(frozen=True)
@@ -264,7 +259,7 @@ class Audio:
 
 
 def _initialize() -> Tuple[Server, PyoObject]:
-    return Server(buffersize=1024).boot().start(), Sine(freq=1, mul=0.001).out()  # type: ignore
+    return Server(buffersize=1024).boot().start(), Noise(mul=1e-5).out()  # type: ignore
 
 
 def _update(server: Server, hum: PyoObject) -> Tuple[Server, PyoObject]:
