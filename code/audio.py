@@ -38,6 +38,7 @@ class Scales(Tuple[int], Enum):
     THIRD = (3, 3, 5, 5, 7, 8, 8, 10, 10, 12, 12, 14)
     FIFTH = (7, 8, 8, 10, 10, 12, 12, 14, 16, 16, 18, 18)
     SEVENTH = (10, 10, 12, 12, 14, 16, 16, 18, 18, 20, 21, 21)
+    THIN = (0, 0, 0, 0, 2, 2, 3, 3, 3, 3, 5, 5)
     WIDE = (0, 2, 3, 5, 8, 10, 12, 14, 16, 18, 21, 24)
 
 
@@ -74,12 +75,6 @@ class Instrument:
         self._notes = notes
         self._frequency = SigTo(0.0)
         self._mute = SigTo(1.0)
-        # self._tremolo = SigTo(0.0)
-        # self._amplitude = SigTo(
-        #     0.0,
-        #     time=0.25,
-        #     mul=Sine(freq=self._tremolo * 25.0, add=1.0, mul=self._tremolo * 0.5),  # type: ignore
-        # )
         self._amplitude = SigTo(0.0, time=0.25)  # type: ignore
         self._pan = SigTo(0.5)
         self._reverb = SigTo(1.0)
