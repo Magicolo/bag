@@ -26,12 +26,6 @@ from utility import clamp, cut, lerp, run
 import vector
 
 
-# TODO: Require some gesture to start the interaction (an open palm?)?
-# TODO: Finger that touch must charge a note.
-# TODO: Convert kick/punch impacts in cymbal/percussion-like sounds.
-# TODO: Use handedness to choose the instrument.
-
-
 _PAD = (-1000, -1000, -1000, -1000, -1000)
 _SECRET = (*_PAD, 19, 18, 15, 9, 8, 16, 20, 24, *_PAD)
 _HARMONIC = (0, 0, 2, 3, 3, 5, 5, 7, 8, 8, 8, 11)
