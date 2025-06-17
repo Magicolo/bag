@@ -259,7 +259,7 @@ class Audio:
 
 
 def _initialize() -> Tuple[Server, PyoObject]:
-    return Server(buffersize=1024).boot().start(), Noise(mul=Sine(freq=1, add=5e-5, mul=1e-5)).out()  # type: ignore
+    return Server(buffersize=1024).boot().start(), Noise(mul=Sine(freq=1, add=4e-4, mul=2e-4)).out()  # type: ignore
 
 
 def _update(server: Server, hum: PyoObject) -> Tuple[Server, PyoObject]:
